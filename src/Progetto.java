@@ -3,6 +3,9 @@ import java.util.List;
 
 public class Progetto {
 
+    /*OVERVIEW : un progetto e' costituito da una serie di card divise in 4 liste,
+     sono ammessi solo alcuni spostamenti tra liste*/
+
     private final String nome;
     private final ArrayList<Card> todo;
     private final ArrayList<Card> inprogress;
