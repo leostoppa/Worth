@@ -10,7 +10,7 @@ public class Card {
         this.nome = nome;
         this.descrizione = descrizione;
         history = new ArrayList<>();
-        history.add("todo");
+        history.add("Card "+nome+" creata e inserita nella lista todo");
     }
 
     public String getNome() {
