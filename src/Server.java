@@ -14,6 +14,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Set;
+import java.util.StringTokenizer;
 
 public class Server extends RemoteServer implements ServerInt {
 
@@ -48,7 +49,6 @@ public class Server extends RemoteServer implements ServerInt {
 
     public static void main(String[] args) {
 
-        //// TODO: 21/01/21 valuta come deve essere lanciato il server da terminale (serve porta?)
         System.out.printf("Server starting ... listening on port "+DEFAULT_PORT);
 
         //setto socket e apro il selector
@@ -95,8 +95,7 @@ public class Server extends RemoteServer implements ServerInt {
                     }else if (key.isReadable()) {
                         SocketChannel client = (SocketChannel) key.channel();
                         ByteBuffer input = ByteBuffer.allocate(MAX_SEG_SIZE);
-                        //leggo dal channel il comando
-                        if (client.read(input)==-1) {//client richiede chiusura --> chiudo connessione
+                        if (client.read(input)==-1) { //leggo dal channel tutta la stringa
                             System.out.println("Closing connection with client...");
                             key.cancel();
                             key.channel().close();
@@ -104,12 +103,28 @@ public class Server extends RemoteServer implements ServerInt {
                         }
                         input.flip();//preparo buffer alla lettura
                         String si = new String(input.array(), StandardCharsets.UTF_8);
-                        //debug
                         System.out.println("FROM CLIENT : "+si);
-                        System.out.println(si.length());
+                        //System.out.println(si.length());
                         // TODO: 21/01/21 parsing dei comandi + implementazione comandi
+                        StringTokenizer tokenizer = new StringTokenizer(si);
+                        String cmd = tokenizer.nextToken();
+                        System.out.println(cmd);
+                        switch (cmd) {
+
+                            case "register": {
+                                break;
+                            }
+
+                        }
                         key.interestOps(SelectionKey.OP_WRITE);
                     }else if (key.isWritable()) {
+                        //mando il risultato del comando al client
+                        SocketChannel client = (SocketChannel) key.channel();
+                        ByteBuffer output2 = ByteBuffer.allocate(MAX_SEG_SIZE);
+                        output2 = (ByteBuffer) key.attachment();
+                        output2.flip();
+                        client.write(output2);
+                        System.out.println("SEND : Response");
                         key.interestOps(SelectionKey.OP_READ);
                     }
                 } catch (IOException e) {
