@@ -32,11 +32,10 @@ public class Client {
             client.read(inputWelcome); //leggo messaggio di benvenuto dal server
             inputWelcome.flip();
             System.out.println(new String(inputWelcome.array(), StandardCharsets.UTF_8));
-            ByteBuffer inputResponse = ByteBuffer.allocate(MAX_SEG_SIZE);
             ByteBuffer output = ByteBuffer.allocate(MAX_SEG_SIZE);
             while (true) {
                 //finche' non inserisco quit leggi comandi
-                inputResponse.clear();
+                ByteBuffer inputResponse = ByteBuffer.allocate(MAX_SEG_SIZE);
                 output.clear();
                 System.out.printf("> ");
                 Scanner scanner = new Scanner(System.in);
@@ -64,7 +63,7 @@ public class Client {
                         } catch (NoSuchElementException e) {
                             System.out.println("Errore : parametri non corretti");
                             System.out.println("Formato comando : register username password");
-                            System.out.println();
+                            //System.out.println();
                             break;
                         }
                         //recupero metodo remoto (rmi) dal server

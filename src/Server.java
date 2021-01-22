@@ -2,6 +2,7 @@
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
+import org.springframework.security.crypto.bcrypt.BCrypt;
 
 import java.io.*;
 import java.lang.reflect.Type;
@@ -59,8 +60,9 @@ public class Server extends RemoteServer implements ServerInt {
 
     //metodo rmi x registrazione
     public String register(String username, String password) throws RemoteException {
-        String hash = null;
         try {
+            /*
+            HASH CON CLASSE JAVA
             MessageDigest md = MessageDigest.getInstance("MD5");
             md.update(password.getBytes());
             byte[] bytes = md.digest();
@@ -68,17 +70,21 @@ public class Server extends RemoteServer implements ServerInt {
             for (byte aByte : bytes) {
                 sb.append(Integer.toString((aByte & 0xff) + 0x100, 16).substring(1));
             }
-            hash = sb.toString();
+             */
+            //HASH PASSWORD CON BCRYPT
+            String hash = BCrypt.hashpw(password,BCrypt.gensalt());
+            //System.out.println("Hash generato e salvato : "+hash);
+            //System.out.println(hash.length());
+            System.out.println("Password inviata per register : "+password);
+            System.out.println(password.length());
             if (listUser.putIfAbsent(username, hash) != null) return "Errore : username gia' utilizzato";
-            System.out.println(listUser.toString());
+            //System.out.println(listUser.toString());
+            //RENDO PERMANENTE SU FILE
             Gson gson = new GsonBuilder().setPrettyPrinting().create();
             Writer writer = new FileWriter("Login.json");
             gson.toJson(listUser, writer);
             writer.flush();
             writer.close();
-        } catch (NoSuchAlgorithmException e) {
-            e.printStackTrace();
-            return "Server Error during registration";
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -91,9 +97,10 @@ public class Server extends RemoteServer implements ServerInt {
 
         ServerSocketChannel serverSocketChannel;
         Selector selector;
+        Server server;
         try {
             //creo rmi
-            Server server = new Server();
+            server = new Server();
             ServerInt stub = (ServerInt) UnicastRemoteObject.exportObject(server,0);
             LocateRegistry.createRegistry(DEFAULT_PORT_RMI);
             Registry r = LocateRegistry.getRegistry(DEFAULT_PORT_RMI);
@@ -154,10 +161,38 @@ public class Server extends RemoteServer implements ServerInt {
                         StringTokenizer tokenizer = new StringTokenizer(si);
                         String cmd = tokenizer.nextToken();
                         System.out.println("CMD : "+cmd);
+                        //PARAMETRI CORRETTI PERCHE' GIA' CONTROLLATI DAL CLIENT
+                        ByteBuffer response = ByteBuffer.allocate(MAX_SEG_SIZE);
                         switch (cmd) {
-
-
-
+                            case "login" : {
+                                String username = tokenizer.nextToken();
+                                String passw = tokenizer.nextToken().trim();
+                                System.out.println("Password inviata per login :"+passw);
+                                System.out.println(passw.length());
+                                String hash = server.listUser.get(username);
+                                //System.out.println("Recupro hash da quelli salvati : "+hash);
+                                //System.out.println(hash.length());
+                                if (hash == null) {//utente non registrato
+                                    String s = "Errore : utente " + username + " non esiste";
+                                    response.put(s.getBytes());
+                                } else { //utente registrato, controllo passw
+                                    if (BCrypt.checkpw(passw, hash)) {
+                                        response.put((username + " logged in").getBytes());
+                                        System.out.println("PASSW OK");
+                                    } else {
+                                        response.put(("Errore : password errata").getBytes());
+                                        System.out.println("PASSW ERRATA");
+                                    }
+                                }
+                                key.attach(response);
+                                //System.out.println(new String(response.array(),StandardCharsets.UTF_8));
+                                //System.out.println("Hash nel file: "+hash);
+                                //System.out.println("passw: "+passw);
+                                break;
+                            }
+                            default:
+                                response.put("Comando non riconosciuto dal server".getBytes());
+                                key.attach(response);
                         }
                         key.interestOps(SelectionKey.OP_WRITE);
                     }else if (key.isWritable()) {
@@ -166,6 +201,7 @@ public class Server extends RemoteServer implements ServerInt {
                         ByteBuffer output2 = ByteBuffer.allocate(MAX_SEG_SIZE);
                         output2 = (ByteBuffer) key.attachment();
                         output2.flip();
+                        //System.out.println(new String(output2.array(),StandardCharsets.UTF_8));
                         client.write(output2);
                         System.out.println("SEND : Response");
                         key.interestOps(SelectionKey.OP_READ);
