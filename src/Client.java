@@ -28,14 +28,15 @@ public class Client {
             SocketAddress address = new InetSocketAddress(DEFAULT_IP, DEFAULT_PORT_SERVER);
             client = SocketChannel.open(address);
             System.out.println("Connessione a Worth avvenuta con successo su " + client);
+            ByteBuffer inputWelcome = ByteBuffer.allocate(MAX_SEG_SIZE);
+            client.read(inputWelcome); //leggo messaggio di benvenuto dal server
+            inputWelcome.flip();
+            System.out.println(new String(inputWelcome.array(), StandardCharsets.UTF_8));
+            ByteBuffer inputResponse = ByteBuffer.allocate(MAX_SEG_SIZE);
             ByteBuffer output = ByteBuffer.allocate(MAX_SEG_SIZE);
-            ByteBuffer input = ByteBuffer.allocate(MAX_SEG_SIZE);
-            client.read(input); //leggo messaggio di benvenuto dal server
-            input.flip();
-            System.out.println(new String(input.array(), StandardCharsets.UTF_8));
             while (true) {
                 //finche' non inserisco quit leggi comandi
-                input.clear();
+                inputResponse.clear();
                 output.clear();
                 System.out.printf("> ");
                 Scanner scanner = new Scanner(System.in);
@@ -46,14 +47,15 @@ public class Client {
                 }
                 StringTokenizer tokenizer = new StringTokenizer(si);
                 String cmd = tokenizer.nextToken();
+                //CONTROLLO SINTASSI COMANDI
                 switch (cmd) {
-                    case "quit" : {
+                    case "quit" : { //COMANDO LATO CLIENT
                         client.close();
                         scanner.close();
                         System.out.println("Closing connection to Server...");
                         return; //se ho inserito comando quit non mando niente al server e termino il client
                     }
-                    case "register" : { //register username passw
+                    case "register" : { //register username passw - COMANDO LATO CLIENT
                         String username;
                         String passw;
                         try {
@@ -74,18 +76,271 @@ public class Client {
                         System.out.println();
                         break;
                     }
+                    //login username passw
+                    case "login" : {
+                        if (tokenizer.countTokens() != 2) {
+                            System.out.println("Errore : parametri non corretti");
+                            System.out.println("Formato comando : login username password");
+                            System.out.println();
+                        }else{
+                            //INVIO COMANDO AL SERVER
+                            output.put(si.getBytes());
+                            output.flip();
+                            client.write(output);
+                            //LEGGO RISPOSTA DEL SERVER
+                            client.read(inputResponse);
+                            inputResponse.flip();
+                            System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                        }
+                        break;
+                    }
+                    //logout username
+                    case "logout" : {
+                        if (tokenizer.countTokens() != 1) {
+                            System.out.println("Errore : parametri non corretti");
+                            System.out.println("Formato comando : logout username");
+                            System.out.println();
+                        }else{
+                            //INVIO COMANDO AL SERVER
+                            output.put(si.getBytes());
+                            output.flip();
+                            client.write(output);
+                            //LEGGO RISPOSTA DEL SERVER
+                            client.read(inputResponse);
+                            inputResponse.flip();
+                            System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                        }
+                        break;
+                    }
+                    //listUsers
+                    case "listUsers" : {
+                        if (tokenizer.countTokens() != 0) {
+                            System.out.println("Errore : parametri non corretti");
+                            System.out.println("Formato comando : listUsers");
+                            System.out.println();
+                        } else {
+                            //INVIO COMANDO AL SERVER
+                            output.put(si.getBytes());
+                            output.flip();
+                            client.write(output);
+                            //LEGGO RISPOSTA DEL SERVER
+                            client.read(inputResponse);
+                            inputResponse.flip();
+                            System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                        }
+                        break;
+                    }
+                    //listOnlineusers
+                    case "listOnlineusers" : {
+                        if (tokenizer.countTokens() != 0) {
+                            System.out.println("Errore : parametri non corretti");
+                            System.out.println("Formato comando : listOnlineusers");
+                            System.out.println();
+                        } else {
+                            //INVIO COMANDO AL SERVER
+                            output.put(si.getBytes());
+                            output.flip();
+                            client.write(output);
+                            //LEGGO RISPOSTA DEL SERVER
+                            client.read(inputResponse);
+                            inputResponse.flip();
+                            System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                        }
+                    }
+                    //listProjects
+                    case "listProjects" : {
+                        if (tokenizer.countTokens() != 0) {
+                            System.out.println("Errore : parametri non corretti");
+                            System.out.println("Formato comando : listProjects");
+                            System.out.println();
+                        } else {
+                            //INVIO COMANDO AL SERVER
+                            output.put(si.getBytes());
+                            output.flip();
+                            client.write(output);
+                            //LEGGO RISPOSTA DEL SERVER
+                            client.read(inputResponse);
+                            inputResponse.flip();
+                            System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                        }
+                    }
+                    //createProject projectName
+                    case "createProject" : {
+                        if (tokenizer.countTokens() != 1) {
+                            System.out.println("Errore : parametri non corretti");
+                            System.out.println("Formato comando : createProject");
+                            System.out.println();
+                        } else {
+                            //INVIO COMANDO AL SERVER
+                            output.put(si.getBytes());
+                            output.flip();
+                            client.write(output);
+                            //LEGGO RISPOSTA DEL SERVER
+                            client.read(inputResponse);
+                            inputResponse.flip();
+                            System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                        }
+                    }
+                    //addMember projectName username
+                    case "addMember" : {
+                        if (tokenizer.countTokens() != 2) {
+                            System.out.println("Errore : parametri non corretti");
+                            System.out.println("Formato comando : addMember projectName username");
+                            System.out.println();
+                        } else {
+                            //INVIO COMANDO AL SERVER
+                            output.put(si.getBytes());
+                            output.flip();
+                            client.write(output);
+                            //LEGGO RISPOSTA DEL SERVER
+                            client.read(inputResponse);
+                            inputResponse.flip();
+                            System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                        }
+                    }
+                    //showMembers projectName
+                    case "showMembers" : {
+                        if (tokenizer.countTokens() != 1) {
+                            System.out.println("Errore : parametri non corretti");
+                            System.out.println("Formato comando : showMembers projectName");
+                            System.out.println();
+                        } else {
+                            //INVIO COMANDO AL SERVER
+                            output.put(si.getBytes());
+                            output.flip();
+                            client.write(output);
+                            //LEGGO RISPOSTA DEL SERVER
+                            client.read(inputResponse);
+                            inputResponse.flip();
+                            System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                        }
+                    }
+                    //showCards projectName
+                    case "showCards" : {
+                        if (tokenizer.countTokens() != 1) {
+                            System.out.println("Errore : parametri non corretti");
+                            System.out.println("Formato comando : showCards projectName");
+                            System.out.println();
+                        } else {
+                            //INVIO COMANDO AL SERVER
+                            output.put(si.getBytes());
+                            output.flip();
+                            client.write(output);
+                            //LEGGO RISPOSTA DEL SERVER
+                            client.read(inputResponse);
+                            inputResponse.flip();
+                            System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                        }
+                    }
+                    //showCard projectName cardName
+                    case "showCard" : {
+                        if (tokenizer.countTokens() != 2) {
+                            System.out.println("Errore : parametri non corretti");
+                            System.out.println("Formato comando : showCard projectName cardName");
+                            System.out.println();
+                        } else {
+                            //INVIO COMANDO AL SERVER
+                            output.put(si.getBytes());
+                            output.flip();
+                            client.write(output);
+                            //LEGGO RISPOSTA DEL SERVER
+                            client.read(inputResponse);
+                            inputResponse.flip();
+                            System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                        }
+                    }
+                    //addCard projectName cardName descrizione
+                    case "addCard" : {
+                        if (tokenizer.countTokens() != 3) {
+                            System.out.println("Errore : parametri non corretti");
+                            System.out.println("Formato comando : addCard projectName cardName descrizione");
+                            System.out.println();
+                        } else {
+                            //INVIO COMANDO AL SERVER
+                            output.put(si.getBytes());
+                            output.flip();
+                            client.write(output);
+                            //LEGGO RISPOSTA DEL SERVER
+                            client.read(inputResponse);
+                            inputResponse.flip();
+                            System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                        }
+                    }
+                    //moveCard projectName cardName listaPartenza listaDestinazione
+                    case "moveCard" : {
+                        if (tokenizer.countTokens() != 4) {
+                            System.out.println("Errore : parametri non corretti");
+                            System.out.println("Formato comando : moveCard projectName cardName listaPartenza listaDestinazione");
+                            System.out.println();
+                        } else {
+                            //INVIO COMANDO AL SERVER
+                            output.put(si.getBytes());
+                            output.flip();
+                            client.write(output);
+                            //LEGGO RISPOSTA DEL SERVER
+                            client.read(inputResponse);
+                            inputResponse.flip();
+                            System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                        }
+                    }
+                    //getCardHistory projectName cardName
+                    case "getCardHistory" : {
+                        if (tokenizer.countTokens() != 2) {
+                            System.out.println("Errore : parametri non corretti");
+                            System.out.println("Formato comando : getCardHistory projectName cardName");
+                            System.out.println();
+                        } else {
+                            //INVIO COMANDO AL SERVER
+                            output.put(si.getBytes());
+                            output.flip();
+                            client.write(output);
+                            //LEGGO RISPOSTA DEL SERVER
+                            client.read(inputResponse);
+                            inputResponse.flip();
+                            System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                        }
+                    }
+                    //readChat projectName
+                    case "readChat" : {
+                        if (tokenizer.countTokens() != 1) {
+                            System.out.println("Errore : parametri non corretti");
+                            System.out.println("Formato comando : readChat projectName");
+                            System.out.println();
+                        } else {
+                            //// TODO: 22/01/21 implementa chat con multicast UDP
+                        }
+                    }
+                    //sendChatMsg projectName messaggio
+                    case "sendChatMsg" : {
+                        if (tokenizer.countTokens() != 2) {
+                            System.out.println("Errore : parametri non corretti");
+                            System.out.println("Formato comando : sendChatMsg projectName messaggio");
+                            System.out.println();
+                        } else {
+                            //// TODO: 22/01/21 implementa chat con multicast UDP
+                        }
+                    }
+                    //cancelProject projectName
+                    case "cancelProject" : {
+                        if (tokenizer.countTokens() != 1) {
+                            System.out.println("Errore : parametri non corretti");
+                            System.out.println("Formato comando : cancelProject projectName");
+                            System.out.println();
+                        } else {
+                            //INVIO COMANDO AL SERVER
+                            output.put(si.getBytes());
+                            output.flip();
+                            client.write(output);
+                            //LEGGO RISPOSTA DEL SERVER
+                            client.read(inputResponse);
+                            inputResponse.flip();
+                            System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                        }
+                    }
+                    default:
+                        System.out.println("Errore : comando non supportato");
+                        //// TODO: 22/01/21 stampa help message
                 }
-                /*
-                //TCP
-                //INVIO COMANDO AL SERVER
-                output.put(si.getBytes());
-                output.flip();
-                client.write(output);
-                //LEGGO RISPOSTA DEL SERVER
-                client.read(input);
-                input.flip();
-                System.out.println(new String(input.array(), StandardCharsets.UTF_8));
-                 */
             }
         } catch (ConnectException e) {
             System.out.println("Connessione con il server fallita!");
