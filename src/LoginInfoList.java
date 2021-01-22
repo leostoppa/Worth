@@ -4,23 +4,26 @@ import java.util.concurrent.ConcurrentHashMap;
 public class LoginInfoList {
     //OVERVIEW : LISTA DI TUTTE LE INFO PER IL LOGIN DEGLI UTENTI
     //HashMap<Username,Hash>
-    private ConcurrentHashMap<String,String> listPassw;
+    private ConcurrentHashMap<String,String> listUser;
 
     public LoginInfoList () {
-        listPassw = new ConcurrentHashMap<>();
+        listUser = new ConcurrentHashMap<>();
     }
 
     public void addHash (String username, String hash) throws UsernameAlreadyExistException {
-        if (listPassw.putIfAbsent(username,hash) != null) throw new UsernameAlreadyExistException();
+        if (listUser.putIfAbsent(username,hash) != null) throw new UsernameAlreadyExistException();
 
     }
 
     public String getHash (String username) {
-        return listPassw.get(username);
+        return listUser.get(username);
     }
 
     public boolean contain (String username) {
-        return listPassw.containsKey(username);
+        return listUser.containsKey(username);
     }
 
+    public ConcurrentHashMap<String, String> getListUser() {
+        return listUser;
+    }
 }

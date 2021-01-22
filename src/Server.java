@@ -1,10 +1,10 @@
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.reflect.TypeToken;
 
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
+import java.io.*;
+import java.lang.reflect.Type;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.nio.ByteBuffer;
@@ -13,6 +13,8 @@ import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
@@ -30,10 +32,29 @@ public class Server extends RemoteServer implements ServerInt {
     final static int DEFAULT_PORT_SERVER = 2000;
     final static int DEFAULT_PORT_RMI = 1950;
     final static int MAX_SEG_SIZE = 512;
+    //HashMap <username, hash>
     private ConcurrentHashMap<String,String> listUser;
 
     public Server () throws RemoteException {
         listUser = new ConcurrentHashMap<>();
+        //setto file di login --> se non esiste lo creo, se esiste ripristino il contenuto
+        File loginFile = new File ("Login.json");
+        if (loginFile.exists()) {
+            try {
+                Gson gson = new Gson();
+                Type type = new TypeToken<ConcurrentHashMap<String,String>>(){}.getType();
+                Reader reader = Files.newBufferedReader(loginFile.toPath());
+                listUser = gson.fromJson(reader,type);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }else{
+            try {
+                loginFile.createNewFile();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
     }
 
     //metodo rmi x registrazione
@@ -49,8 +70,12 @@ public class Server extends RemoteServer implements ServerInt {
             }
             hash = sb.toString();
             if (listUser.putIfAbsent(username, hash) != null) return "Errore : username gia' utilizzato";
+            System.out.println(listUser.toString());
             Gson gson = new GsonBuilder().setPrettyPrinting().create();
-            gson.toJson(new User(username,hash), new FileWriter("Login.json"));
+            Writer writer = new FileWriter("Login.json");
+            gson.toJson(listUser, writer);
+            writer.flush();
+            writer.close();
         } catch (NoSuchAlgorithmException e) {
             e.printStackTrace();
             return "Server Error during registration";
@@ -64,12 +89,9 @@ public class Server extends RemoteServer implements ServerInt {
 
         System.out.printf("Server starting ... listening on port "+DEFAULT_PORT_SERVER);
 
-        //FileWriter loginFile;
         ServerSocketChannel serverSocketChannel;
         Selector selector;
         try {
-            //setto file di login
-            //loginFile = new FileWriter ("Login.json");
             //creo rmi
             Server server = new Server();
             ServerInt stub = (ServerInt) UnicastRemoteObject.exportObject(server,0);
