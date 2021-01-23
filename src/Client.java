@@ -112,7 +112,7 @@ public class Client {
                         }
                         break;
                     }
-                    //listUsers
+                    //listUsers - COMANDO LATO CLIENT - USA STRUTTURA DATI LOCALE
                     case "listUsers" : {
                         if (tokenizer.countTokens() != 0) {
                             System.out.println("Errore : parametri non corretti");
@@ -130,7 +130,7 @@ public class Client {
                         }
                         break;
                     }
-                    //listOnlineusers
+                    //listOnlineusers - COMANDO LATO CLIENT - USA STRUTTURA DATI LOCALE
                     case "listOnlineusers" : {
                         if (tokenizer.countTokens() != 0) {
                             System.out.println("Errore : parametri non corretti");
@@ -258,7 +258,7 @@ public class Client {
                     }
                     //addCard projectName cardName descrizione
                     case "addCard" : {
-                        if (tokenizer.countTokens() != 3) {
+                        if (tokenizer.countTokens() < 3) {
                             System.out.println("Errore : parametri non corretti");
                             System.out.println("Formato comando : addCard projectName cardName descrizione");
                             System.out.println();

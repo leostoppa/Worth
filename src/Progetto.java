@@ -26,7 +26,8 @@ public class Progetto {
         return nome;
     }
 
-    public void addMember (String nickUtente) {
+    public void addMember (String nickUtente) throws MemberAlreadyExistException {
+        if (listaMembri.contains(nickUtente)) throw new MemberAlreadyExistException();
         listaMembri.add(nickUtente);
     }
 
@@ -34,8 +35,14 @@ public class Progetto {
         return listaMembri;
     }
 
-    public void addCard (String cardName, String descrizione) {
-        todo.add(new Card(cardName,descrizione));
+    public void addCard (String cardName, String descrizione) throws CardAlreadyExistException {
+        try {
+            getCard(cardName);
+        } catch (CardNotFoundException e) {
+            todo.add(new Card(cardName,descrizione));
+            return;
+        }
+        throw new CardAlreadyExistException();
     }
 
     public ArrayList<Card> getListCards () {
