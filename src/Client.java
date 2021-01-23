@@ -77,6 +77,7 @@ public class Client {
                     }
                     //login username passw
                     case "login" : {
+                        // TODO: 22/01/21 errore se c'e' gia' un altro utente loggato 
                         if (tokenizer.countTokens() != 2) {
                             System.out.println("Errore : parametri non corretti");
                             System.out.println("Formato comando : login username password");
@@ -93,11 +94,11 @@ public class Client {
                         }
                         break;
                     }
-                    //logout username
+                    //logout
                     case "logout" : {
-                        if (tokenizer.countTokens() != 1) {
+                        if (tokenizer.countTokens() != 0) {
                             System.out.println("Errore : parametri non corretti");
-                            System.out.println("Formato comando : logout username");
+                            System.out.println("Formato comando : logout");
                             System.out.println();
                         }else{
                             //INVIO COMANDO AL SERVER
@@ -145,6 +146,7 @@ public class Client {
                             inputResponse.flip();
                             System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
                         }
+                        break;
                     }
                     //listProjects
                     case "listProjects" : {
@@ -162,6 +164,7 @@ public class Client {
                             inputResponse.flip();
                             System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
                         }
+                        break;
                     }
                     //createProject projectName
                     case "createProject" : {
@@ -179,6 +182,7 @@ public class Client {
                             inputResponse.flip();
                             System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
                         }
+                        break;
                     }
                     //addMember projectName username
                     case "addMember" : {
@@ -196,6 +200,7 @@ public class Client {
                             inputResponse.flip();
                             System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
                         }
+                        break;
                     }
                     //showMembers projectName
                     case "showMembers" : {
@@ -213,6 +218,7 @@ public class Client {
                             inputResponse.flip();
                             System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
                         }
+                        break;
                     }
                     //showCards projectName
                     case "showCards" : {
@@ -230,6 +236,7 @@ public class Client {
                             inputResponse.flip();
                             System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
                         }
+                        break;
                     }
                     //showCard projectName cardName
                     case "showCard" : {
@@ -247,6 +254,7 @@ public class Client {
                             inputResponse.flip();
                             System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
                         }
+                        break;
                     }
                     //addCard projectName cardName descrizione
                     case "addCard" : {
@@ -264,6 +272,7 @@ public class Client {
                             inputResponse.flip();
                             System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
                         }
+                        break;
                     }
                     //moveCard projectName cardName listaPartenza listaDestinazione
                     case "moveCard" : {
@@ -281,6 +290,7 @@ public class Client {
                             inputResponse.flip();
                             System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
                         }
+                        break;
                     }
                     //getCardHistory projectName cardName
                     case "getCardHistory" : {
@@ -298,6 +308,7 @@ public class Client {
                             inputResponse.flip();
                             System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
                         }
+                        break;
                     }
                     //readChat projectName
                     case "readChat" : {
@@ -308,6 +319,7 @@ public class Client {
                         } else {
                             //// TODO: 22/01/21 implementa chat con multicast UDP
                         }
+                        break;
                     }
                     //sendChatMsg projectName messaggio
                     case "sendChatMsg" : {
@@ -318,6 +330,7 @@ public class Client {
                         } else {
                             //// TODO: 22/01/21 implementa chat con multicast UDP
                         }
+                        break;
                     }
                     //cancelProject projectName
                     case "cancelProject" : {
@@ -335,6 +348,7 @@ public class Client {
                             inputResponse.flip();
                             System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
                         }
+                        break;
                     }
                     default:
                         System.out.println("Errore : comando non supportato");

@@ -23,9 +23,7 @@ import java.rmi.server.RemoteServer;
 import java.rmi.server.UnicastRemoteObject;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.Iterator;
-import java.util.Set;
-import java.util.StringTokenizer;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class Server extends RemoteServer implements ServerInt {
@@ -33,14 +31,21 @@ public class Server extends RemoteServer implements ServerInt {
     final static int DEFAULT_PORT_SERVER = 2000;
     final static int DEFAULT_PORT_RMI = 1950;
     final static int MAX_SEG_SIZE = 512;
-    //HashMap <username, hash>
+    //HashMap <username, hash> -> contiene le info per il login
     private ConcurrentHashMap<String,String> listUser;
+    // contiene tutti i progetti creati
+    private ArrayList<Progetto> listProgetti;
+    //coppie socket add client - username --> con quale username il client si e' loggato
+    private HashMap<String,String> userOnline;
 
     public Server () throws RemoteException {
+        //AVVIO IL SERVER -> RIPRISTINO LO STATO -> PERSISTENZA
         listUser = new ConcurrentHashMap<>();
+        System.out.println("listUser inizializzata");
+        if (listUser==null) System.out.println("listUser e' null");
         //setto file di login --> se non esiste lo creo, se esiste ripristino il contenuto
         File loginFile = new File ("Login.json");
-        if (loginFile.exists()) {
+        if (loginFile.length()>0) {
             try {
                 Gson gson = new Gson();
                 Type type = new TypeToken<ConcurrentHashMap<String,String>>(){}.getType();
@@ -56,29 +61,21 @@ public class Server extends RemoteServer implements ServerInt {
                 e.printStackTrace();
             }
         }
+        listProgetti = new ArrayList<>();
+        // TODO: 23/01/21 caricare i progetti dal disco
+        userOnline = new HashMap<>();
     }
 
     //metodo rmi x registrazione
     public String register(String username, String password) throws RemoteException {
         try {
-            /*
-            HASH CON CLASSE JAVA
-            MessageDigest md = MessageDigest.getInstance("MD5");
-            md.update(password.getBytes());
-            byte[] bytes = md.digest();
-            StringBuilder sb = new StringBuilder();
-            for (byte aByte : bytes) {
-                sb.append(Integer.toString((aByte & 0xff) + 0x100, 16).substring(1));
-            }
-             */
             //HASH PASSWORD CON BCRYPT
             String hash = BCrypt.hashpw(password,BCrypt.gensalt());
-            //System.out.println("Hash generato e salvato : "+hash);
-            //System.out.println(hash.length());
             System.out.println("Password inviata per register : "+password);
-            System.out.println(password.length());
+            System.out.println("Username inviato per register : "+username);
+            //System.out.println(password.length());
+            if (listUser==null) System.out.println("LIST USER E' NULL");
             if (listUser.putIfAbsent(username, hash) != null) return "Errore : username gia' utilizzato";
-            //System.out.println(listUser.toString());
             //RENDO PERMANENTE SU FILE
             Gson gson = new GsonBuilder().setPrettyPrinting().create();
             Writer writer = new FileWriter("Login.json");
@@ -93,13 +90,13 @@ public class Server extends RemoteServer implements ServerInt {
 
     public static void main(String[] args) {
 
-        System.out.printf("Server starting ... listening on port "+DEFAULT_PORT_SERVER);
+        System.out.println("Server starting ... listening on port "+DEFAULT_PORT_SERVER);
 
         ServerSocketChannel serverSocketChannel;
         Selector selector;
         Server server;
         try {
-            //creo rmi
+            //CREO RMI
             server = new Server();
             ServerInt stub = (ServerInt) UnicastRemoteObject.exportObject(server,0);
             LocateRegistry.createRegistry(DEFAULT_PORT_RMI);
@@ -144,6 +141,7 @@ public class Server extends RemoteServer implements ServerInt {
                         output1.flip();
                         client.write(output1);
                         System.out.println("SEND : Welcome msg\n");
+                        //System.out.println(client.getRemoteAddress().toString());
                     }else if (key.isReadable()) {
                         SocketChannel client = (SocketChannel) key.channel();
                         ByteBuffer input = ByteBuffer.allocate(MAX_SEG_SIZE);
@@ -159,7 +157,7 @@ public class Server extends RemoteServer implements ServerInt {
                         //System.out.println(si.length());
                         // TODO: 21/01/21 parsing dei comandi + implementazione comandi
                         StringTokenizer tokenizer = new StringTokenizer(si);
-                        String cmd = tokenizer.nextToken();
+                        String cmd = tokenizer.nextToken().trim();
                         System.out.println("CMD : "+cmd);
                         //PARAMETRI CORRETTI PERCHE' GIA' CONTROLLATI DAL CLIENT
                         ByteBuffer response = ByteBuffer.allocate(MAX_SEG_SIZE);
@@ -169,25 +167,58 @@ public class Server extends RemoteServer implements ServerInt {
                                 String passw = tokenizer.nextToken().trim();
                                 System.out.println("Password inviata per login :"+passw);
                                 System.out.println(passw.length());
-                                String hash = server.listUser.get(username);
-                                //System.out.println("Recupro hash da quelli salvati : "+hash);
-                                //System.out.println(hash.length());
+                                //if (username==null) System.out.println("USERNAME E' NULL");
+                                ConcurrentHashMap<String,String> listUser = server.listUser;
+                                if (listUser == null) System.out.println("listUser e' null");
+                                String hash = listUser.get(username);  //BUG IMMENSO NULLPOINTER
                                 if (hash == null) {//utente non registrato
                                     String s = "Errore : utente " + username + " non esiste";
                                     response.put(s.getBytes());
                                 } else { //utente registrato, controllo passw
                                     if (BCrypt.checkpw(passw, hash)) {
-                                        response.put((username + " logged in").getBytes());
-                                        System.out.println("PASSW OK");
+                                        if (server.userOnline.putIfAbsent(client.getRemoteAddress().toString(),username) == null) {
+                                            response.put((username + " logged in").getBytes());
+                                            System.out.println("PASSW OK");
+                                        }else {
+                                            response.put("Errore : c'e' un utente gia' collegato, deve essere prima scollegato".getBytes());
+                                            System.out.println("ALTRO UTENTE GIA' LOGGATO");
+                                        }
                                     } else {
                                         response.put(("Errore : password errata").getBytes());
                                         System.out.println("PASSW ERRATA");
                                     }
                                 }
                                 key.attach(response);
-                                //System.out.println(new String(response.array(),StandardCharsets.UTF_8));
-                                //System.out.println("Hash nel file: "+hash);
-                                //System.out.println("passw: "+passw);
+                                break;
+                            }
+                            case "logout" : {
+                                String clientAddress = client.getRemoteAddress().toString();
+                                String usernameLoggato = server.userOnline.get(clientAddress);
+                                if (server.userOnline.remove(clientAddress)==null) response.put("Errore : utente non loggato".getBytes());
+                                else response.put((usernameLoggato+" scollegato").getBytes());
+                                key.attach(response);
+                                break;
+                            }
+                            // TODO: 23/01/21 gestione login/logout e stato dell'utente - lato client o server?
+                            //logout, listUsers, listOnlineusers
+                            case "listProjects" : {
+                                String clientAddress = client.getRemoteAddress().toString();
+                                String username = server.userOnline.get(clientAddress);
+                                if (username == null) {
+                                    response.put("Errore : utente non loggato".getBytes());
+                                }else {
+                                    ArrayList<Progetto> listProgetti = server.listProgetti;
+                                    String sProgetti = "";
+                                    for (Progetto p : listProgetti) {
+                                        if (p.getListMembers().contains(username)) {
+                                            sProgetti = sProgetti+p.getNome();
+                                            sProgetti = sProgetti+" ";
+                                        }
+                                    }
+                                    if (sProgetti.length()==0) response.put("Non fai parte di alcun progetto".getBytes());
+                                    else response.put(sProgetti.getBytes());
+                                }
+                                key.attach(response);
                                 break;
                             }
                             default:
