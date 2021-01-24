@@ -22,6 +22,10 @@ public class Progetto {
         listaMembri = new ArrayList<>();
     }
 
+    public boolean readyToCancel () {
+        return todo.isEmpty() && inprogress.isEmpty() && toberevised.isEmpty();
+    }
+
     public String getNome() {
         return nome;
     }
@@ -87,6 +91,7 @@ public class Progetto {
             startList.remove(card);
             destList.add(card);
             card.addToHistory("Card " + cardName + " spostata dalla lista " + listaPartenza + " alla lista " + listaDestinazione);//aggiunge l'evento alla storia della card
+            card.setStato(listaDestinazione);
         }else throw new IllegalMoveException();
     }
 

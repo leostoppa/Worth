@@ -28,28 +28,35 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class Server extends RemoteServer implements ServerInt {
 
+    //OVERVIEW : Server con multiplexing dei canali, metodo rmi per la registrazione, callback per lista utenti e multicast per le chat.
+    //Persistenza delle registrazioni e dei progetti
+
     final static int DEFAULT_PORT_SERVER = 2000;
     final static int DEFAULT_PORT_RMI = 1950;
+    private final static int DEFAULT_PORT_CALLBACK = 5000;
     final static int MAX_SEG_SIZE = 512;
     //HashMap <username, hash> -> contiene le info per il login
-    private ConcurrentHashMap<String,String> listUser;
+    //ACCESSO CONCORRENTE MULTITHREAD
+    private HashMap<String,String> listUser;
     // contiene tutti i progetti creati
+    //ACCESSO SEQUENZIALE
     private ArrayList<Progetto> listProgetti;
     // TODO: 23/01/21 RENDERE PERSISTENTE I PROGETTI SU DISCO
     //coppie socket add client - username --> con quale username il client si e' loggato
+    //ACCESSO SEQUENZIALE
     private HashMap<String,String> userOnline;
+    //lista dei client registrati per la callback
+    private List<ClientInt> clients;
 
     public Server () throws RemoteException {
         //AVVIO IL SERVER -> RIPRISTINO LO STATO -> PERSISTENZA
-        listUser = new ConcurrentHashMap<>();
-        System.out.println("listUser inizializzata");
-        if (listUser==null) System.out.println("listUser e' null");
+        listUser = new HashMap<>();
         //setto file di login --> se non esiste lo creo, se esiste ripristino il contenuto
         File loginFile = new File ("Login.json");
         if (loginFile.length()>0) {
             try {
                 Gson gson = new Gson();
-                Type type = new TypeToken<ConcurrentHashMap<String,String>>(){}.getType();
+                Type type = new TypeToken<HashMap<String,String>>(){}.getType();
                 Reader reader = Files.newBufferedReader(loginFile.toPath());
                 listUser = gson.fromJson(reader,type);
             } catch (IOException e) {
@@ -65,17 +72,20 @@ public class Server extends RemoteServer implements ServerInt {
         listProgetti = new ArrayList<>();
         // TODO: 23/01/21 caricare i progetti dal disco
         userOnline = new HashMap<>();
+        clients = new ArrayList<ClientInt>();
     }
 
-    //metodo rmi x registrazione
+    //METODI RMI
+
     public String register(String username, String password) throws RemoteException {
         try {
             //HASH PASSWORD CON BCRYPT
             String hash = BCrypt.hashpw(password,BCrypt.gensalt());
-            System.out.println("Password inviata per register : "+password);
-            System.out.println("Username inviato per register : "+username);
+            //System.out.println("Password inviata per register : "+password);
+            //System.out.println("Username inviato per register : "+username);
             //System.out.println(password.length());
-            if (listUser==null) System.out.println("LIST USER E' NULL");
+            //if (listUser==null) System.out.println("LIST USER E' NULL");
+            //OPERAZIONE ATOMICA SU CONCURRENT HASH MAP
             if (listUser.putIfAbsent(username, hash) != null) return "Errore : username gia' utilizzato";
             //RENDO PERMANENTE SU FILE
             Gson gson = new GsonBuilder().setPrettyPrinting().create();
@@ -86,9 +96,38 @@ public class Server extends RemoteServer implements ServerInt {
         } catch (IOException e) {
             e.printStackTrace();
         }
+        updateClient();
         return "ok";
     }
 
+    public synchronized void registerForCallback(ClientInt clientInterface) throws RemoteException {
+        if (!clients.contains(clientInterface)) {
+            clients.add(clientInterface);
+            System.out.println("New client registered for callback");
+            updateClient();
+        }
+    }
+
+    public synchronized void unregisterForCallback(ClientInt clientInterface) throws RemoteException {
+        if (clients.remove(clientInterface)) {
+            System.out.println("Client unregistered");
+        }else{
+            System.out.println("Unable to unregister client");
+        }
+    }
+
+    public synchronized void updateClient () throws RemoteException {
+        System.out.println("Starting Callbacks");
+        Iterator<ClientInt> i = clients.iterator();
+        while (i.hasNext()) {
+            System.out.println("AGGIORNO CLIENT");
+            ClientInt client = i.next();
+            client.updateUserListInterface(userOnline,listUser.keySet());
+        }
+        System.out.println("Callback complete");
+    }
+
+    //SERVER
     public static void main(String[] args) {
 
         System.out.println("Server starting ... listening on port "+DEFAULT_PORT_SERVER);
@@ -166,19 +205,21 @@ public class Server extends RemoteServer implements ServerInt {
                             case "login" : {
                                 String username = tokenizer.nextToken();
                                 String passw = tokenizer.nextToken().trim();
-                                System.out.println("Password inviata per login :"+passw);
-                                System.out.println(passw.length());
+                                //System.out.println("Password inviata per login :"+passw);
+                                //System.out.println(passw.length());
                                 //if (username==null) System.out.println("USERNAME E' NULL");
-                                ConcurrentHashMap<String,String> listUser = server.listUser;
-                                if (listUser == null) System.out.println("listUser e' null");
-                                String hash = listUser.get(username);  //BUG IMMENSO NULLPOINTER
-                                if (hash == null) {//utente non registrato
+                                HashMap<String,String> listUser = server.listUser;
+                                //if (listUser == null) System.out.println("listUser e' null");
+                                String hash;
+                                //OPERAZIONE ATOMICA SU CONCURRENT HASH MAP
+                                if ((hash = listUser.get(username)) == null) {//utente non registrato (bug risolto listusers == null)
                                     String s = "Errore : utente " + username + " non esiste";
                                     response.put(s.getBytes());
                                 } else { //utente registrato, controllo passw
                                     if (BCrypt.checkpw(passw, hash)) {
                                         if (server.userOnline.putIfAbsent(client.getRemoteAddress().toString(),username) == null) {
                                             response.put((username + " logged in").getBytes());
+                                            server.updateClient();
                                             System.out.println("PASSW OK");
                                         }else {
                                             response.put("Errore : c'e' un utente gia' collegato, deve essere prima scollegato".getBytes());
@@ -196,7 +237,10 @@ public class Server extends RemoteServer implements ServerInt {
                                 String clientAddress = client.getRemoteAddress().toString();
                                 String usernameLoggato = server.userOnline.get(clientAddress);
                                 if (server.userOnline.remove(clientAddress)==null) response.put("Errore : utente non loggato".getBytes());
-                                else response.put((usernameLoggato+" scollegato").getBytes());
+                                else {
+                                    response.put((usernameLoggato+" scollegato").getBytes());
+                                    server.updateClient();
+                                }
                                 key.attach(response);
                                 break;
                             }
@@ -211,7 +255,7 @@ public class Server extends RemoteServer implements ServerInt {
                                     for (Progetto p : listProgetti) {
                                         if (p.getListMembers().contains(username)) {
                                             sProgetti = sProgetti+p.getNome();
-                                            sProgetti = sProgetti+" ";
+                                            sProgetti = sProgetti+"\n";
                                         }
                                     }
                                     if (sProgetti.length()==0) response.put("Non fai parte di alcun progetto".getBytes());
@@ -281,7 +325,7 @@ public class Server extends RemoteServer implements ServerInt {
                                         String sList = "";
                                         for (String s : listMembers) {
                                             sList = sList+s;
-                                            sList = sList+" ";
+                                            sList = sList+"\n";
                                         }
                                         response.put(sList.getBytes());
                                     }
@@ -302,8 +346,7 @@ public class Server extends RemoteServer implements ServerInt {
                                         ArrayList<Card> listCards = p.getListCards();
                                         String cList = "";
                                         for (Card c : listCards) {
-                                            cList = cList+c.getNome();
-                                            cList = cList+" ";
+                                            cList = cList+"Card: "+"nome="+c.getNome()+" "+"stato="+c.getStato()+"\n";
                                         }
                                         response.put(cList.getBytes());
                                     }
@@ -383,7 +426,8 @@ public class Server extends RemoteServer implements ServerInt {
                                         } catch (ListNotFoundException e) {
                                             response.put("Errore : liste non valide, le liste consentite sono todo,inprogress,toberevised,done".getBytes());
                                         } catch (IllegalMoveException e) {
-                                            e.printStackTrace();
+                                            response.put(("Errore : spostamento card non consentito\n" +
+                                                    "Spostamenti consentiti :\ntodo->inprogress\ninprogress->toberevised\ninprogress->done\ntoberevised->inprogress\ntoberevised->done").getBytes());
                                         }
                                     }
                                 }
@@ -392,7 +436,7 @@ public class Server extends RemoteServer implements ServerInt {
                             }
                             case "getCardHistory" : {
                                 String projectName = tokenizer.nextToken();
-                                String cardName = tokenizer.nextToken();
+                                String cardName = tokenizer.nextToken().trim();
                                 String clientAddress = client.getRemoteAddress().toString();
                                 String username = server.userOnline.get(clientAddress);
                                 if (username==null) response.put("Errore : utente non loggato".getBytes());
@@ -405,8 +449,7 @@ public class Server extends RemoteServer implements ServerInt {
                                             ArrayList<String> cardHistory = p.getCardHistory(cardName);
                                             String sList = "";
                                             for (String s : cardHistory) {
-                                                sList = sList + s;
-                                                sList = sList + "\n";
+                                                sList = sList + s + "\n";
                                             }
                                             response.put(sList.getBytes());
                                         } catch (CardNotFoundException e) {
@@ -417,8 +460,29 @@ public class Server extends RemoteServer implements ServerInt {
                                 key.attach(response);
                                 break;
                             }
+                            case "cancelProject" : {
+                                String projectName = tokenizer.nextToken().trim();
+                                String clientAddress = client.getRemoteAddress().toString();
+                                String username = server.userOnline.get(clientAddress);
+                                if (username==null) response.put("Errore : utente non loggato".getBytes());
+                                else {
+                                    Progetto p = server.getProgetto(projectName);
+                                    if (p==null) response.put("Errore : il progetto non esiste".getBytes());
+                                    else if (!p.getListMembers().contains(username)) response.put("Errore : non sei un membro del progetto".getBytes());
+                                    else {
+                                        if (p.readyToCancel()) {
+                                            server.listProgetti.remove(p);
+                                            response.put(("Progetto "+projectName+" eliminato con successo").getBytes());
+                                        }else{
+                                            response.put("Errore : per poter eliminare un progetto tutte le card devono essere nella lista done".getBytes());
+                                        }
+                                    }
+                                }
+                                key.attach(response);
+                                break;
+                            }
                             default:
-                                response.put("Comando non riconosciuto dal server".getBytes());
+                                response.put("Errore : Comando non riconosciuto dal server".getBytes());
                                 key.attach(response);
                         }
                         key.interestOps(SelectionKey.OP_WRITE);
