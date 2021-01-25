@@ -15,14 +15,11 @@ import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
 import java.rmi.server.RemoteServer;
 import java.rmi.server.UnicastRemoteObject;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -43,9 +40,9 @@ public class Server extends RemoteServer implements ServerInt {
     // TODO: 23/01/21 RENDERE PERSISTENTE I PROGETTI SU DISCO
     //coppie socket add client - username --> con quale username il client si e' loggato
     //ACCESSO SEQUENZIALE
-    private HashMap<String,String> userOnline;
+    final private HashMap<String,String> userOnline;
     //lista dei client registrati per la callback
-    private List<ClientInt> clients;
+    final private List<ClientInt> clients;
 
     public Server () throws RemoteException {
         //AVVIO IL SERVER -> RIPRISTINO LO STATO -> PERSISTENZA
@@ -71,7 +68,7 @@ public class Server extends RemoteServer implements ServerInt {
         listProgetti = new ArrayList<>();
         // TODO: 23/01/21 caricare i progetti dal disco
         userOnline = new HashMap<>();
-        clients = new ArrayList<ClientInt>();
+        clients = new ArrayList<>();
     }
 
     //METODI RMI
@@ -80,10 +77,6 @@ public class Server extends RemoteServer implements ServerInt {
         try {
             //HASH PASSWORD CON BCRYPT
             String hash = BCrypt.hashpw(password,BCrypt.gensalt());
-            //System.out.println("Password inviata per register : "+password);
-            //System.out.println("Username inviato per register : "+username);
-            //System.out.println(password.length());
-            //if (listUser==null) System.out.println("LIST USER E' NULL");
             //OPERAZIONE ATOMICA SU CONCURRENT HASH MAP
             if (listUser.putIfAbsent(username, hash) != null) return "Errore : username gia' utilizzato";
             //RENDO PERMANENTE SU FILE
@@ -118,11 +111,9 @@ public class Server extends RemoteServer implements ServerInt {
     public synchronized void updateClient () throws RemoteException {
         ArrayList<String> arraylist = new ArrayList<>(listUser.keySet());
         System.out.println("Starting Callbacks");
-        Iterator<ClientInt> i = clients.iterator();
-        while (i.hasNext()) {
+        for (ClientInt clientInt : clients) {
             System.out.println("AGGIORNO CLIENT");
-            ClientInt client = i.next();
-            client.updateUserListInterface(userOnline,arraylist);
+            clientInt.updateUserListInterface(userOnline, arraylist);
         }
         System.out.println("Callback complete");
     }
@@ -205,11 +196,7 @@ public class Server extends RemoteServer implements ServerInt {
                             case "login" : {
                                 String username = tokenizer.nextToken();
                                 String passw = tokenizer.nextToken().trim();
-                                //System.out.println("Password inviata per login :"+passw);
-                                //System.out.println(passw.length());
-                                //if (username==null) System.out.println("USERNAME E' NULL");
                                 ConcurrentHashMap<String,String> listUser = server.listUser;
-                                //if (listUser == null) System.out.println("listUser e' null");
                                 String hash;
                                 //OPERAZIONE ATOMICA SU CONCURRENT HASH MAP
                                 if ((hash = listUser.get(username)) == null) {//utente non registrato (bug risolto listusers == null)
@@ -251,15 +238,15 @@ public class Server extends RemoteServer implements ServerInt {
                                     response.put("Errore : utente non loggato".getBytes());
                                 }else {
                                     ArrayList<Progetto> listProgetti = server.listProgetti;
-                                    String sProgetti = "";
+                                    StringBuilder sProgetti = new StringBuilder();
                                     for (Progetto p : listProgetti) {
                                         if (p.getListMembers().contains(username)) {
-                                            sProgetti = sProgetti+p.getNome();
-                                            sProgetti = sProgetti+"\n";
+                                            sProgetti.append("< ").append(p.getNome());
+                                            sProgetti.append("\n");
                                         }
                                     }
                                     if (sProgetti.length()==0) response.put("Non fai parte di alcun progetto".getBytes());
-                                    else response.put(sProgetti.getBytes());
+                                    else response.put(sProgetti.toString().getBytes());
                                 }
                                 key.attach(response);
                                 break;
@@ -322,12 +309,12 @@ public class Server extends RemoteServer implements ServerInt {
                                     else if (!p.getListMembers().contains(username)) response.put("Errore : non sei un membro del progetto".getBytes());
                                     else {
                                         ArrayList<String> listMembers = p.getListMembers();
-                                        String sList = "";
+                                        StringBuilder sList = new StringBuilder();
                                         for (String s : listMembers) {
-                                            sList = sList+s;
-                                            sList = sList+"\n";
+                                            sList.append("<").append(s);
+                                            sList.append("\n");
                                         }
-                                        response.put(sList.getBytes());
+                                        response.put(sList.toString().getBytes());
                                     }
                                 }
                                 key.attach(response);
@@ -344,11 +331,11 @@ public class Server extends RemoteServer implements ServerInt {
                                     else if (!p.getListMembers().contains(username)) response.put("Errore : non sei un membro del progetto".getBytes());
                                     else {
                                         ArrayList<Card> listCards = p.getListCards();
-                                        String cList = "";
+                                        StringBuilder cList = new StringBuilder();
                                         for (Card c : listCards) {
-                                            cList = cList+"Card: "+"nome="+c.getNome()+" "+"stato="+c.getStato()+"\n";
+                                            cList.append("< ").append("Card: ").append("nome=").append(c.getNome()).append(" ").append("stato=").append(c.getStato()).append("\n");
                                         }
-                                        response.put(cList.getBytes());
+                                        response.put(cList.toString().getBytes());
                                     }
                                 }
                                 key.attach(response);
@@ -367,7 +354,7 @@ public class Server extends RemoteServer implements ServerInt {
                                     else {
                                         try {
                                             Card card = p.getCard(cardName);
-                                            response.put(("card: nome="+card.getNome()+", descrizione="+card.getDescrizione()+", stato="+card.getStato()).getBytes());
+                                            response.put(("Card: nome="+card.getNome()+", descrizione="+card.getDescrizione()+", stato="+card.getStato()).getBytes());
                                         } catch (CardNotFoundException e) {
                                             response.put(("Errore : la card "+cardName+" non esiste nel progetto "+projectName).getBytes());
                                         }
@@ -379,11 +366,11 @@ public class Server extends RemoteServer implements ServerInt {
                             case "addCard" : {
                                 String projectName = tokenizer.nextToken();
                                 String cardName = tokenizer.nextToken();
-                                String descrizione = "";
+                                StringBuilder descrizione = new StringBuilder();
                                 while (tokenizer.hasMoreTokens()) {
-                                    descrizione = descrizione + tokenizer.nextToken();
+                                    descrizione.append(tokenizer.nextToken());
                                 }
-                                String descrizioneComp = descrizione.trim();
+                                String descrizioneComp = descrizione.toString().trim();
                                 String clientAddress = client.getRemoteAddress().toString();
                                 String username = server.userOnline.get(clientAddress);
                                 if (username==null) response.put("Errore : utente non loggato".getBytes());
@@ -447,11 +434,11 @@ public class Server extends RemoteServer implements ServerInt {
                                     else {
                                         try {
                                             ArrayList<String> cardHistory = p.getCardHistory(cardName);
-                                            String sList = "";
+                                            StringBuilder sList = new StringBuilder();
                                             for (String s : cardHistory) {
-                                                sList = sList + s + "\n";
+                                                sList.append("< ").append(s).append("\n");
                                             }
-                                            response.put(sList.getBytes());
+                                            response.put(sList.toString().getBytes());
                                         } catch (CardNotFoundException e) {
                                             response.put(("Errore : Card "+cardName+" non esiste nel progetto "+projectName).getBytes());
                                         }
@@ -489,10 +476,9 @@ public class Server extends RemoteServer implements ServerInt {
                     }else if (key.isWritable()) {
                         //mando il risultato del comando al client
                         SocketChannel client = (SocketChannel) key.channel();
-                        ByteBuffer output2 = ByteBuffer.allocate(MAX_SEG_SIZE);
-                        output2 = (ByteBuffer) key.attachment();
+                        ByteBuffer output2 = (ByteBuffer) key.attachment();
                         if (output2 == null) System.out.println("Attachment vuoto --> response vuoto --> manca una risposta");
-                        output2.flip();
+                        else output2.flip();
                         //System.out.println(new String(output2.array(),StandardCharsets.UTF_8));
                         client.write(output2);
                         System.out.println("SEND : Response");

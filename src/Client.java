@@ -46,7 +46,7 @@ public class Client extends RemoteObject implements ClientInt{
             ClientInt stub = (ClientInt) UnicastRemoteObject.exportObject(client,0);
             SocketAddress address = new InetSocketAddress(DEFAULT_IP, DEFAULT_PORT_SERVER);
             socketClient = SocketChannel.open(address);
-            client.print("Connessione a Worth avvenuta con successo su " + socketClient);
+            System.out.println("Connessione a Worth avvenuta con successo su " + socketClient);
             ByteBuffer inputWelcome = ByteBuffer.allocate(MAX_SEG_SIZE);
             socketClient.read(inputWelcome); //leggo messaggio di benvenuto dal server
             inputWelcome.flip();
@@ -190,7 +190,7 @@ public class Client extends RemoteObject implements ClientInt{
                             //LEGGO RISPOSTA DEL SERVER
                             socketClient.read(inputResponse);
                             inputResponse.flip();
-                            client.print(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                            System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
                         }
                         break;
                     }
@@ -241,7 +241,7 @@ public class Client extends RemoteObject implements ClientInt{
                             //LEGGO RISPOSTA DEL SERVER
                             socketClient.read(inputResponse);
                             inputResponse.flip();
-                            client.print(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                            System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
                         }
                         break;
                     }
@@ -258,7 +258,7 @@ public class Client extends RemoteObject implements ClientInt{
                             //LEGGO RISPOSTA DEL SERVER
                             socketClient.read(inputResponse);
                             inputResponse.flip();
-                            client.print(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                            System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
                         }
                         break;
                     }
@@ -326,7 +326,7 @@ public class Client extends RemoteObject implements ClientInt{
                             //LEGGO RISPOSTA DEL SERVER
                             socketClient.read(inputResponse);
                             inputResponse.flip();
-                            client.print(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                            System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
                         }
                         break;
                     }
