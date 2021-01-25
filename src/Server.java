@@ -33,11 +33,10 @@ public class Server extends RemoteServer implements ServerInt {
 
     final static int DEFAULT_PORT_SERVER = 2000;
     final static int DEFAULT_PORT_RMI = 1950;
-    private final static int DEFAULT_PORT_CALLBACK = 5000;
     final static int MAX_SEG_SIZE = 512;
     //HashMap <username, hash> -> contiene le info per il login
     //ACCESSO CONCORRENTE MULTITHREAD
-    private HashMap<String,String> listUser;
+    private ConcurrentHashMap<String,String> listUser;
     // contiene tutti i progetti creati
     //ACCESSO SEQUENZIALE
     private ArrayList<Progetto> listProgetti;
@@ -50,13 +49,13 @@ public class Server extends RemoteServer implements ServerInt {
 
     public Server () throws RemoteException {
         //AVVIO IL SERVER -> RIPRISTINO LO STATO -> PERSISTENZA
-        listUser = new HashMap<>();
+        listUser = new ConcurrentHashMap<>();
         //setto file di login --> se non esiste lo creo, se esiste ripristino il contenuto
         File loginFile = new File ("Login.json");
         if (loginFile.length()>0) {
             try {
                 Gson gson = new Gson();
-                Type type = new TypeToken<HashMap<String,String>>(){}.getType();
+                Type type = new TypeToken<ConcurrentHashMap<String,String>>(){}.getType();
                 Reader reader = Files.newBufferedReader(loginFile.toPath());
                 listUser = gson.fromJson(reader,type);
             } catch (IOException e) {
@@ -117,12 +116,13 @@ public class Server extends RemoteServer implements ServerInt {
     }
 
     public synchronized void updateClient () throws RemoteException {
+        ArrayList<String> arraylist = new ArrayList<>(listUser.keySet());
         System.out.println("Starting Callbacks");
         Iterator<ClientInt> i = clients.iterator();
         while (i.hasNext()) {
             System.out.println("AGGIORNO CLIENT");
             ClientInt client = i.next();
-            client.updateUserListInterface(userOnline,listUser.keySet());
+            client.updateUserListInterface(userOnline,arraylist);
         }
         System.out.println("Callback complete");
     }
@@ -208,7 +208,7 @@ public class Server extends RemoteServer implements ServerInt {
                                 //System.out.println("Password inviata per login :"+passw);
                                 //System.out.println(passw.length());
                                 //if (username==null) System.out.println("USERNAME E' NULL");
-                                HashMap<String,String> listUser = server.listUser;
+                                ConcurrentHashMap<String,String> listUser = server.listUser;
                                 //if (listUser == null) System.out.println("listUser e' null");
                                 String hash;
                                 //OPERAZIONE ATOMICA SU CONCURRENT HASH MAP
