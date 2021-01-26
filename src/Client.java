@@ -1,7 +1,6 @@
+
 import java.io.IOException;
-import java.net.ConnectException;
-import java.net.InetSocketAddress;
-import java.net.SocketAddress;
+import java.net.*;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
@@ -20,11 +19,28 @@ public class Client extends RemoteObject implements ClientInt{
     private final static int DEFAULT_PORT_RMI = 1950;
     private static final String DEFAULT_IP = "127.0.0.1";
     private static final int MAX_SEG_SIZE = 512;
+    private final int DEFAULT_PORT_MULTICAST = 3000;
+    private String user;
+    private String stato;
     //contiene la lista di coppie user-stato (stato = online or offline)
     final private Map<String,String> listAllUser;
+    //contiene la lista di coppie progetto-ipMulticast x chat
+    private Map<String,String> listIpMulticast;
+    //coppie progettoName - chat
+    private Map<String,ArrayList<String>> listChatProgetti; //STRUTTURA CONDIVISA DA THREAD
+    //coppie projectName - multicast socket
+    private Map<String, MulticastSocket> listMulticastSocket;
+    //pool di thread attivi
+    private ArrayList<Thread> threads;
 
     public Client() throws RemoteException {
+        user=null;
+        stato="offline";
         listAllUser = new HashMap<>();
+        listIpMulticast = new HashMap<>();
+        listChatProgetti = new HashMap<>();
+        listMulticastSocket = new HashMap<>();
+        threads = new ArrayList<>();
     }
 
     //metodo rmi usato dal server per aggiornare la lista utenti
@@ -33,17 +49,34 @@ public class Client extends RemoteObject implements ClientInt{
             if (userOnline.containsValue(s)) this.listAllUser.put(s, "online");
             else this.listAllUser.put(s,"offline");
         }
+
         //client.print("Lista Utenti aggiornata");
+    }
+
+    public void setIpMulticast(HashMap<String, String> listIpMulticast) throws RemoteException {
+        this.listIpMulticast = listIpMulticast;
+        try {
+            for (Map.Entry<String,String> entry : listIpMulticast.entrySet()) {
+                MulticastSocket ms = new MulticastSocket(DEFAULT_PORT_MULTICAST);
+                ms.joinGroup(InetAddress.getByName(entry.getValue()));
+                listMulticastSocket.put(entry.getKey(), ms);
+                listChatProgetti.put(entry.getKey(),new ArrayList<>());
+                Thread thread = new Thread(new LettoreChat(listChatProgetti.get(entry.getKey()),ms,InetAddress.getByName(entry.getValue())));
+                thread.start();
+                threads.add(thread);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     public static void main(String[] args) {
         System.out.println("Mi sto connettendo a Worth all'indirizzo ip: " + DEFAULT_IP + " e porta: " + DEFAULT_PORT_SERVER + " ...");
         Client client;
         SocketChannel socketClient = null;
-        String stato = "offline";
         try {
             client = new Client();
-            ClientInt stub = (ClientInt) UnicastRemoteObject.exportObject(client,0);
+            ClientInt stub = (ClientInt) UnicastRemoteObject.exportObject(client, 0);
             SocketAddress address = new InetSocketAddress(DEFAULT_IP, DEFAULT_PORT_SERVER);
             socketClient = SocketChannel.open(address);
             System.out.println("Connessione a Worth avvenuta con successo su " + socketClient);
@@ -64,335 +97,363 @@ public class Client extends RemoteObject implements ClientInt{
                     break;
                 }
                 StringTokenizer tokenizer = new StringTokenizer(si);
-                String cmd = tokenizer.nextToken();
-                //CONTROLLO SINTASSI COMANDI
-                switch (cmd) {
-                    case "quit" : { //COMANDO LATO CLIENT
-                        socketClient.close();
-                        scanner.close();
-                        client.print("Closing connection to Server...");
-                        System.exit(0); //se ho inserito comando quit non mando niente al server e termino il client
-                    }
-                    case "register" : { //register username passw - COMANDO LATO CLIENT
-                        String username;
-                        String passw;
-                        try {
-                            username = tokenizer.nextToken();
-                            passw = tokenizer.nextToken();
-                        } catch (NoSuchElementException e) {
-                            client.print("Errore : parametri non corretti");
-                            client.print("Formato comando : register username password");
+                try {
+                    String cmd = tokenizer.nextToken();
+                    //CONTROLLO SINTASSI COMANDI
+                    switch (cmd) {
+                        case "quit": { //COMANDO LATO CLIENT
+                            socketClient.close();
+                            scanner.close();
+                            client.print("Closing connection to Server...");
+                            Registry registry = LocateRegistry.getRegistry(DEFAULT_PORT_RMI);
+                            ServerInt server = (ServerInt) registry.lookup("WORTH-SERVER");
+                            server.unregisterForCallback(client.user);
+                            System.exit(0); //se ho inserito comando quit non mando niente al server e termino il client
+                        }
+                        case "register": { //register username passw - COMANDO LATO CLIENT
+                            String username;
+                            String passw;
+                            try {
+                                username = tokenizer.nextToken();
+                                passw = tokenizer.nextToken();
+                            } catch (NoSuchElementException e) {
+                                client.print("Errore : parametri non corretti");
+                                client.print("Formato comando : register username password");
+                                break;
+                            }
+                            //recupero metodo remoto (rmi) dal server
+                            Registry r = LocateRegistry.getRegistry(DEFAULT_PORT_RMI);
+                            Remote remoteObject = r.lookup("WORTH-SERVER");
+                            ServerInt serverObject = (ServerInt) remoteObject;
+                            //chiamo il metodo e stampo la risposta
+                            client.print(serverObject.register(username, passw));
                             break;
                         }
-                        //recupero metodo remoto (rmi) dal server
-                        Registry r = LocateRegistry.getRegistry(DEFAULT_PORT_RMI);
-                        Remote remoteObject = r.lookup("WORTH-SERVER");
-                        ServerInt serverObject = (ServerInt) remoteObject;
-                        //chiamo il metodo e stampo la risposta
-                        client.print(serverObject.register(username,passw));
-                        break;
-                    }
-                    //login username passw
-                    case "login" : {
-                        // TODO: 22/01/21 errore se c'e' gia' un altro utente loggato 
-                        if (tokenizer.countTokens() != 2) {
-                            client.print("Errore : parametri non corretti");
-                            client.print("Formato comando : login username password");
-                        }else{
-                            //INVIO COMANDO AL SERVER
-                            output.put(si.getBytes());
-                            output.flip();
-                            socketClient.write(output);
-                            //LEGGO RISPOSTA DEL SERVER
-                            socketClient.read(inputResponse);
-                            inputResponse.flip();
-                            String response = new String(inputResponse.array(), StandardCharsets.UTF_8);
-                            client.print(response);
-                            if (response.contains("logged in")) {
-                                stato = "online";
-                                Registry registry = LocateRegistry.getRegistry(DEFAULT_PORT_RMI);
-                                ServerInt server = (ServerInt) registry.lookup("WORTH-SERVER");
-                                //CLIENT SI REGISTRA PER LA CALLBACK
-                                //client.print("Mi sto registrando per la callback...");
-                                server.registerForCallback(stub);
-                                //client.print("Registrazione effettuata");
-                            }
-                        }
-                        break;
-                    }
-                    //logout
-                    case "logout" : {
-                        if (tokenizer.countTokens() != 0) {
-                            client.print("Errore : parametri non corretti");
-                            client.print("Formato comando : logout");
-                        }else{
-                            //INVIO COMANDO AL SERVER
-                            output.put(si.getBytes());
-                            output.flip();
-                            socketClient.write(output);
-                            //LEGGO RISPOSTA DEL SERVER
-                            socketClient.read(inputResponse);
-                            inputResponse.flip();
-                            String response = new String(inputResponse.array(), StandardCharsets.UTF_8);
-                            client.print(response);
-                            if (response.contains("scollegato")) {
-                                stato = "offline";
-                                Registry registry = LocateRegistry.getRegistry(DEFAULT_PORT_RMI);
-                                ServerInt server = (ServerInt) registry.lookup("WORTH-SERVER");
-                                server.unregisterForCallback(stub);
-                            }
-                        }
-                        break;
-                    }
-                    //listUsers - COMANDO LATO CLIENT - USA STRUTTURA DATI LOCALE
-                    case "listUsers" : {
-                        if (tokenizer.countTokens() != 0) {
-                            client.print("Errore : parametri non corretti");
-                            client.print("Formato comando : listUsers");
-                        } else {
-                            if (stato.equals("online")) {
-                                if (client.listAllUser.isEmpty()) {
-                                    client.print("Nessun utente registrato al servizio");
-                                }else client.print(client.listAllUser.toString());
-                            } else client.print("Errore : utente non loggato");
-                        }
-                        break;
-                    }
-                    //listOnlineusers - COMANDO LATO CLIENT - USA STRUTTURA DATI LOCALE
-                    case "listOnlineusers" : {
-                        if (tokenizer.countTokens() != 0) {
-                            client.print("Errore : parametri non corretti");
-                            client.print("Formato comando : listOnlineusers");
-                        } else {
-                            if (stato.equals("online")) {
-                                boolean zeroUserOnline = true;
-                                for (Map.Entry<String, String> entry : client.listAllUser.entrySet()) {
-                                    if (entry.getValue().equals("online")) {
-                                        client.print(entry.getKey());
-                                        zeroUserOnline = false;
+                        //login username passw
+                        case "login": {
+                            if (tokenizer.countTokens() != 2) {
+                                client.print("Errore : parametri non corretti");
+                                client.print("Formato comando : login username password");
+                            } else {
+                                String username = tokenizer.nextToken();
+                                //INVIO COMANDO AL SERVER
+                                output.put(si.getBytes());
+                                output.flip();
+                                socketClient.write(output);
+                                //LEGGO RISPOSTA DEL SERVER
+                                socketClient.read(inputResponse);
+                                inputResponse.flip();
+                                String response = new String(inputResponse.array(), StandardCharsets.UTF_8);
+                                client.print(response);
+                                if (response.contains("logged in")) {
+                                    client.user = username;
+                                    client.stato = "online";
+                                    Registry registry = LocateRegistry.getRegistry(DEFAULT_PORT_RMI);
+                                    ServerInt server = (ServerInt) registry.lookup("WORTH-SERVER");
+                                    //CLIENT SI REGISTRA PER LA CALLBACK
+                                    //client.print("Mi sto registrando per la callback...");
+                                    server.registerForCallback(client.user, stub);
+                                    //client.print("Registrazione effettuata");
+                                    for (Map.Entry<String, String> entry : client.listIpMulticast.entrySet()) {
+                                        MulticastSocket ms = new MulticastSocket(client.DEFAULT_PORT_MULTICAST);
+                                        ms.joinGroup(InetAddress.getByName(entry.getValue()));
+                                        client.listMulticastSocket.put(client.user, ms);
+                                        Thread thread = new Thread(new LettoreChat(client.listChatProgetti.get(entry.getKey()), ms, InetAddress.getByName(entry.getValue())));
+                                        thread.start();
+                                        client.threads.add(thread);
                                     }
                                 }
-                                if (zeroUserOnline) client.print("Nessun utente online");
-                            }else client.print("Errore : utente non loggato");
+                            }
+                            break;
                         }
-                        break;
-                    }
-                    //listProjects
-                    case "listProjects" : {
-                        if (tokenizer.countTokens() != 0) {
-                            client.print("Errore : parametri non corretti");
-                            client.print("Formato comando : listProjects");
-                        } else {
-                            //INVIO COMANDO AL SERVER
-                            output.put(si.getBytes());
-                            output.flip();
-                            socketClient.write(output);
-                            //LEGGO RISPOSTA DEL SERVER
-                            socketClient.read(inputResponse);
-                            inputResponse.flip();
-                            System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                        //logout
+                        case "logout": {
+                            if (tokenizer.countTokens() != 0) {
+                                client.print("Errore : parametri non corretti");
+                                client.print("Formato comando : logout");
+                            } else {
+                                //INVIO COMANDO AL SERVER
+                                output.put(si.getBytes());
+                                output.flip();
+                                socketClient.write(output);
+                                //LEGGO RISPOSTA DEL SERVER
+                                socketClient.read(inputResponse);
+                                inputResponse.flip();
+                                String response = new String(inputResponse.array(), StandardCharsets.UTF_8);
+                                client.print(response);
+                                if (response.contains("scollegato")) {
+                                    client.stato = "offline";
+                                    Registry registry = LocateRegistry.getRegistry(DEFAULT_PORT_RMI);
+                                    ServerInt server = (ServerInt) registry.lookup("WORTH-SERVER");
+                                    server.unregisterForCallback(client.user);
+                                    for (Thread t : client.threads) {
+                                        t.interrupt();
+                                    }
+                                    client.threads = new ArrayList<>();
+                                    client.user = null;
+                                }
+                            }
+                            break;
                         }
-                        break;
-                    }
-                    //createProject projectName
-                    case "createProject" : {
-                        if (tokenizer.countTokens() != 1) {
-                            client.print("Errore : parametri non corretti");
-                            client.print("Formato comando : createProject");
-                        } else {
-                            //INVIO COMANDO AL SERVER
-                            output.put(si.getBytes());
-                            output.flip();
-                            socketClient.write(output);
-                            //LEGGO RISPOSTA DEL SERVER
-                            socketClient.read(inputResponse);
-                            inputResponse.flip();
-                            client.print(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                        //listUsers - COMANDO LATO CLIENT - USA STRUTTURA DATI LOCALE
+                        case "listUsers": {
+                            if (tokenizer.countTokens() != 0) {
+                                client.print("Errore : parametri non corretti");
+                                client.print("Formato comando : listUsers");
+                            } else {
+                                if (client.stato.equals("online")) {
+                                    if (client.listAllUser.isEmpty()) {
+                                        client.print("Nessun utente registrato al servizio");
+                                    } else client.print(client.listAllUser.toString());
+                                } else client.print("Errore : utente non loggato");
+                            }
+                            break;
                         }
-                        break;
-                    }
-                    //addMember projectName username
-                    case "addMember" : {
-                        if (tokenizer.countTokens() != 2) {
-                            client.print("Errore : parametri non corretti");
-                            client.print("Formato comando : addMember projectName username");
-                        } else {
-                            //INVIO COMANDO AL SERVER
-                            output.put(si.getBytes());
-                            output.flip();
-                            socketClient.write(output);
-                            //LEGGO RISPOSTA DEL SERVER
-                            socketClient.read(inputResponse);
-                            inputResponse.flip();
-                            client.print(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                        //listOnlineusers - COMANDO LATO CLIENT - USA STRUTTURA DATI LOCALE
+                        case "listOnlineusers": {
+                            if (tokenizer.countTokens() != 0) {
+                                client.print("Errore : parametri non corretti");
+                                client.print("Formato comando : listOnlineusers");
+                            } else {
+                                if (client.stato.equals("online")) {
+                                    boolean zeroUserOnline = true;
+                                    for (Map.Entry<String, String> entry : client.listAllUser.entrySet()) {
+                                        if (entry.getValue().equals("online")) {
+                                            client.print(entry.getKey());
+                                            zeroUserOnline = false;
+                                        }
+                                    }
+                                    if (zeroUserOnline) client.print("Nessun utente online");
+                                } else client.print("Errore : utente non loggato");
+                            }
+                            break;
                         }
-                        break;
-                    }
-                    //showMembers projectName
-                    case "showMembers" : {
-                        if (tokenizer.countTokens() != 1) {
-                            client.print("Errore : parametri non corretti");
-                            client.print("Formato comando : showMembers projectName");
-                        } else {
-                            //INVIO COMANDO AL SERVER
-                            output.put(si.getBytes());
-                            output.flip();
-                            socketClient.write(output);
-                            //LEGGO RISPOSTA DEL SERVER
-                            socketClient.read(inputResponse);
-                            inputResponse.flip();
-                            System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                        //listProjects
+                        case "listProjects": {
+                            if (tokenizer.countTokens() != 0) {
+                                client.print("Errore : parametri non corretti");
+                                client.print("Formato comando : listProjects");
+                            } else {
+                                //INVIO COMANDO AL SERVER
+                                output.put(si.getBytes());
+                                output.flip();
+                                socketClient.write(output);
+                                //LEGGO RISPOSTA DEL SERVER
+                                socketClient.read(inputResponse);
+                                inputResponse.flip();
+                                System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                            }
+                            break;
                         }
-                        break;
-                    }
-                    //showCards projectName
-                    case "showCards" : {
-                        if (tokenizer.countTokens() != 1) {
-                            client.print("Errore : parametri non corretti");
-                            client.print("Formato comando : showCards projectName");
-                        } else {
-                            //INVIO COMANDO AL SERVER
-                            output.put(si.getBytes());
-                            output.flip();
-                            socketClient.write(output);
-                            //LEGGO RISPOSTA DEL SERVER
-                            socketClient.read(inputResponse);
-                            inputResponse.flip();
-                            System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                        //createProject projectName
+                        case "createProject": {
+                            if (tokenizer.countTokens() != 1) {
+                                client.print("Errore : parametri non corretti");
+                                client.print("Formato comando : createProject");
+                            } else {
+                                //INVIO COMANDO AL SERVER
+                                output.put(si.getBytes());
+                                output.flip();
+                                socketClient.write(output);
+                                //LEGGO RISPOSTA DEL SERVER
+                                socketClient.read(inputResponse);
+                                inputResponse.flip();
+                                client.print(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                            }
+                            break;
                         }
-                        break;
-                    }
-                    //showCard projectName cardName
-                    case "showCard" : {
-                        if (tokenizer.countTokens() != 2) {
-                            client.print("Errore : parametri non corretti");
-                            client.print("Formato comando : showCard projectName cardName");
-                        } else {
-                            //INVIO COMANDO AL SERVER
-                            output.put(si.getBytes());
-                            output.flip();
-                            socketClient.write(output);
-                            //LEGGO RISPOSTA DEL SERVER
-                            socketClient.read(inputResponse);
-                            inputResponse.flip();
-                            client.print(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                        //addMember projectName username
+                        case "addMember": {
+                            if (tokenizer.countTokens() != 2) {
+                                client.print("Errore : parametri non corretti");
+                                client.print("Formato comando : addMember projectName username");
+                            } else {
+                                //INVIO COMANDO AL SERVER
+                                output.put(si.getBytes());
+                                output.flip();
+                                socketClient.write(output);
+                                //LEGGO RISPOSTA DEL SERVER
+                                socketClient.read(inputResponse);
+                                inputResponse.flip();
+                                client.print(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                            }
+                            break;
                         }
-                        break;
-                    }
-                    //addCard projectName cardName descrizione
-                    case "addCard" : {
-                        if (tokenizer.countTokens() < 3) {
-                            client.print("Errore : parametri non corretti");
-                            client.print("Formato comando : addCard projectName cardName descrizione");
-                        } else {
-                            //INVIO COMANDO AL SERVER
-                            output.put(si.getBytes());
-                            output.flip();
-                            socketClient.write(output);
-                            //LEGGO RISPOSTA DEL SERVER
-                            socketClient.read(inputResponse);
-                            inputResponse.flip();
-                            client.print(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                        //showMembers projectName
+                        case "showMembers": {
+                            if (tokenizer.countTokens() != 1) {
+                                client.print("Errore : parametri non corretti");
+                                client.print("Formato comando : showMembers projectName");
+                            } else {
+                                //INVIO COMANDO AL SERVER
+                                output.put(si.getBytes());
+                                output.flip();
+                                socketClient.write(output);
+                                //LEGGO RISPOSTA DEL SERVER
+                                socketClient.read(inputResponse);
+                                inputResponse.flip();
+                                System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                            }
+                            break;
                         }
-                        break;
-                    }
-                    //moveCard projectName cardName listaPartenza listaDestinazione
-                    case "moveCard" : {
-                        if (tokenizer.countTokens() != 4) {
-                            client.print("Errore : parametri non corretti");
-                            client.print("Formato comando : moveCard projectName cardName listaPartenza listaDestinazione");
-                        } else {
-                            //INVIO COMANDO AL SERVER
-                            output.put(si.getBytes());
-                            output.flip();
-                            socketClient.write(output);
-                            //LEGGO RISPOSTA DEL SERVER
-                            socketClient.read(inputResponse);
-                            inputResponse.flip();
-                            client.print(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                        //showCards projectName
+                        case "showCards": {
+                            if (tokenizer.countTokens() != 1) {
+                                client.print("Errore : parametri non corretti");
+                                client.print("Formato comando : showCards projectName");
+                            } else {
+                                //INVIO COMANDO AL SERVER
+                                output.put(si.getBytes());
+                                output.flip();
+                                socketClient.write(output);
+                                //LEGGO RISPOSTA DEL SERVER
+                                socketClient.read(inputResponse);
+                                inputResponse.flip();
+                                System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                            }
+                            break;
                         }
-                        break;
-                    }
-                    //getCardHistory projectName cardName
-                    case "getCardHistory" : {
-                        if (tokenizer.countTokens() != 2) {
-                            client.print("Errore : parametri non corretti");
-                            client.print("Formato comando : getCardHistory projectName cardName");
-                        } else {
-                            //INVIO COMANDO AL SERVER
-                            output.put(si.getBytes());
-                            output.flip();
-                            socketClient.write(output);
-                            //LEGGO RISPOSTA DEL SERVER
-                            socketClient.read(inputResponse);
-                            inputResponse.flip();
-                            System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                        //showCard projectName cardName
+                        case "showCard": {
+                            if (tokenizer.countTokens() != 2) {
+                                client.print("Errore : parametri non corretti");
+                                client.print("Formato comando : showCard projectName cardName");
+                            } else {
+                                //INVIO COMANDO AL SERVER
+                                output.put(si.getBytes());
+                                output.flip();
+                                socketClient.write(output);
+                                //LEGGO RISPOSTA DEL SERVER
+                                socketClient.read(inputResponse);
+                                inputResponse.flip();
+                                client.print(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                            }
+                            break;
                         }
-                        break;
-                    }
-                    //readChat projectName
-                    case "readChat" : {
-                        if (tokenizer.countTokens() != 1) {
-                            client.print("Errore : parametri non corretti");
-                            client.print("Formato comando : readChat projectName");
-                        } else {
-                            //// TODO: 22/01/21 implementa chat con multicast UDP
+                        //addCard projectName cardName descrizione
+                        case "addCard": {
+                            if (tokenizer.countTokens() < 3) {
+                                client.print("Errore : parametri non corretti");
+                                client.print("Formato comando : addCard projectName cardName descrizione");
+                            } else {
+                                //INVIO COMANDO AL SERVER
+                                output.put(si.getBytes());
+                                output.flip();
+                                socketClient.write(output);
+                                //LEGGO RISPOSTA DEL SERVER
+                                socketClient.read(inputResponse);
+                                inputResponse.flip();
+                                client.print(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                            }
+                            break;
                         }
-                        break;
-                    }
-                    //sendChatMsg projectName messaggio
-                    case "sendChatMsg" : {
-                        if (tokenizer.countTokens() != 2) {
-                            client.print("Errore : parametri non corretti");
-                            client.print("Formato comando : sendChatMsg projectName messaggio");
-                        } else {
-                            //// TODO: 22/01/21 implementa chat con multicast UDP
+                        //moveCard projectName cardName listaPartenza listaDestinazione
+                        case "moveCard": {
+                            if (tokenizer.countTokens() != 4) {
+                                client.print("Errore : parametri non corretti");
+                                client.print("Formato comando : moveCard projectName cardName listaPartenza listaDestinazione");
+                            } else {
+                                //INVIO COMANDO AL SERVER
+                                output.put(si.getBytes());
+                                output.flip();
+                                socketClient.write(output);
+                                //LEGGO RISPOSTA DEL SERVER
+                                socketClient.read(inputResponse);
+                                inputResponse.flip();
+                                client.print(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                            }
+                            break;
                         }
-                        break;
-                    }
-                    //cancelProject projectName
-                    case "cancelProject" : {
-                        if (tokenizer.countTokens() != 1) {
-                            client.print("Errore : parametri non corretti");
-                            client.print("Formato comando : cancelProject projectName");
-                        } else {
-                            //INVIO COMANDO AL SERVER
-                            output.put(si.getBytes());
-                            output.flip();
-                            socketClient.write(output);
-                            //LEGGO RISPOSTA DEL SERVER
-                            socketClient.read(inputResponse);
-                            inputResponse.flip();
-                            client.print(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                        //getCardHistory projectName cardName
+                        case "getCardHistory": {
+                            if (tokenizer.countTokens() != 2) {
+                                client.print("Errore : parametri non corretti");
+                                client.print("Formato comando : getCardHistory projectName cardName");
+                            } else {
+                                //INVIO COMANDO AL SERVER
+                                output.put(si.getBytes());
+                                output.flip();
+                                socketClient.write(output);
+                                //LEGGO RISPOSTA DEL SERVER
+                                socketClient.read(inputResponse);
+                                inputResponse.flip();
+                                System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                            }
+                            break;
                         }
-                        break;
+                        //readChat projectName
+                        case "readChat": {
+                            try {
+                                String projectName = tokenizer.nextToken().trim();
+                                if (client.stato.equals("online")) {
+                                    if (client.listChatProgetti.containsKey(projectName)) {
+                                        for (String s : client.listChatProgetti.get(projectName)) {
+                                            System.out.println(s);
+                                        }
+                                    } else {
+                                        System.out.println("Errore : non sei un membro del progetto " + projectName + " o non esiste");
+                                        System.out.println("Fai parte dei seguenti progetti : " + client.listChatProgetti.keySet());
+                                    }
+                                } else System.out.println("Errore : utente non loggato");
+                            } catch (NoSuchElementException e) {
+                                client.print("Errore : parametri non corretti");
+                                client.print("Formato comando : readChat projectName");
+                            }
+                            break;
+                        }
+                        //sendChatMsg projectName messaggio
+                        case "sendChatMsg": {
+                            try {
+                                String projectName = tokenizer.nextToken();
+                                StringBuilder messaggio = new StringBuilder();
+                                while (tokenizer.hasMoreTokens()) {
+                                    messaggio.append(tokenizer.nextToken()).append(" ");
+                                }
+                                String messsCompatto = client.user + " : " + messaggio.toString().trim();
+                                if (client.stato.equals("online")) {
+                                    MulticastSocket ms = client.listMulticastSocket.get(projectName);
+                                    if (ms != null) {
+                                        byte[] data;
+                                        data = messsCompatto.getBytes();
+                                        InetAddress ia = InetAddress.getByName(client.listIpMulticast.get(projectName));
+                                        DatagramPacket dp = new DatagramPacket(data, data.length, ia, client.DEFAULT_PORT_MULTICAST);
+                                        ms.send(dp);
+                                    } else
+                                        System.out.println("Errore : non fai parte del progetto " + projectName + " o non esiste");
+                                } else System.out.println("Errore : utente non loggato");
+                            } catch (NoSuchElementException e) {
+                                client.print("Errore : parametri non corretti");
+                                client.print("Formato comando : sendChatMsg projectName messaggio");
+                            }
+                            break;
+                        }
+                        //cancelProject projectName
+                        case "cancelProject": {
+                            if (tokenizer.countTokens() != 1) {
+                                client.print("Errore : parametri non corretti");
+                                client.print("Formato comando : cancelProject projectName");
+                            } else {
+                                //INVIO COMANDO AL SERVER
+                                output.put(si.getBytes());
+                                output.flip();
+                                socketClient.write(output);
+                                //LEGGO RISPOSTA DEL SERVER
+                                socketClient.read(inputResponse);
+                                inputResponse.flip();
+                                client.print(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                            }
+                            break;
+                        }
+                        default:
+                            client.print("Errore : comando non supportato");
+                            //// TODO: 22/01/21 stampa help message
                     }
-                    default:
-                        client.print("Errore : comando non supportato");
-                        //// TODO: 22/01/21 stampa help message
+                } catch (NoSuchElementException ignored) {
                 }
             }
-        } catch (ConnectException e) {
+        } catch (NotBoundException | IOException e) {
             System.out.println("< Connessione con il server fallita!");
-            if (socketClient != null) {
-                try {
-                    socketClient.close();
-                } catch (IOException ioException) {
-                    ioException.printStackTrace();
-                }
-            }
-        } catch (RemoteException | NotBoundException e) {
-            System.out.println("< Errore : non e' stato possibile invocare il metodo remoto (rmi) register");
-            e.printStackTrace();
-        } catch (IOException e) {
-            e.printStackTrace();
-            if (socketClient != null) {
-                try {
-                    socketClient.close();
-                } catch (IOException ioException) {
-                    ioException.printStackTrace();
-                }
-            }
+            System.exit(-1);
         }
     }
 

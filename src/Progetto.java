@@ -7,14 +7,16 @@ public class Progetto {
      sono ammessi solo alcuni spostamenti tra liste*/
 
     private final String nome;
+    private String ipMulticast;
     private final ArrayList<Card> todo;
     private final ArrayList<Card> inprogress;
     private final ArrayList<Card> toberevised;
     private final ArrayList<Card> done;
     private final ArrayList<String> listaMembri; //utenti che possono interagire col progetto
 
-    public Progetto (String nome) { //crea un nuovo progetto
+    public Progetto (String nome, String ipMulticast) { //crea un nuovo progetto
         this.nome = nome;
+        this.ipMulticast = ipMulticast;
         todo = new ArrayList<>();
         inprogress = new ArrayList<>();
         toberevised = new ArrayList<>();
@@ -116,4 +118,7 @@ public class Progetto {
         }
     }
 
+    public String getIpMulticast() {
+        return ipMulticast;
+    }
 }

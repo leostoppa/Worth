@@ -31,6 +31,7 @@ public class Server extends RemoteServer implements ServerInt {
     final static int DEFAULT_PORT_SERVER = 2000;
     final static int DEFAULT_PORT_RMI = 1950;
     final static int MAX_SEG_SIZE = 512;
+    private String ipMulticast = "224.0.0.0";
     //HashMap <username, hash> -> contiene le info per il login
     //ACCESSO CONCORRENTE MULTITHREAD
     private ConcurrentHashMap<String,String> listUser;
@@ -42,7 +43,7 @@ public class Server extends RemoteServer implements ServerInt {
     //ACCESSO SEQUENZIALE
     final private HashMap<String,String> userOnline;
     //lista dei client registrati per la callback
-    final private List<ClientInt> clients;
+    final private HashMap<String,ClientInt> clients;
 
     public Server () throws RemoteException {
         //AVVIO IL SERVER -> RIPRISTINO LO STATO -> PERSISTENZA
@@ -68,7 +69,7 @@ public class Server extends RemoteServer implements ServerInt {
         listProgetti = new ArrayList<>();
         // TODO: 23/01/21 caricare i progetti dal disco
         userOnline = new HashMap<>();
-        clients = new ArrayList<>();
+        clients = new HashMap<>();
     }
 
     //METODI RMI
@@ -92,16 +93,16 @@ public class Server extends RemoteServer implements ServerInt {
         return "ok";
     }
 
-    public synchronized void registerForCallback(ClientInt clientInterface) throws RemoteException {
-        if (!clients.contains(clientInterface)) {
-            clients.add(clientInterface);
+    public synchronized void registerForCallback(String username, ClientInt clientInterface) throws RemoteException {
+            if (clients.putIfAbsent(username,clientInterface)==null) {
             System.out.println("New client registered for callback");
             updateClient();
+            sendIpMulticast(username);
         }
     }
 
-    public synchronized void unregisterForCallback(ClientInt clientInterface) throws RemoteException {
-        if (clients.remove(clientInterface)) {
+    public synchronized void unregisterForCallback(String username) throws RemoteException {
+        if (clients.remove(username)!=null) {
             System.out.println("Client unregistered");
         }else{
             System.out.println("Unable to unregister client");
@@ -110,12 +111,33 @@ public class Server extends RemoteServer implements ServerInt {
 
     public synchronized void updateClient () throws RemoteException {
         ArrayList<String> arraylist = new ArrayList<>(listUser.keySet());
+        ArrayList<String> userToRemove = new ArrayList<>();
         System.out.println("Starting Callbacks");
-        for (ClientInt clientInt : clients) {
+        for (Map.Entry<String,ClientInt> entry : clients.entrySet()) {
             System.out.println("AGGIORNO CLIENT");
-            clientInt.updateUserListInterface(userOnline, arraylist);
+            try {
+                entry.getValue().updateUserListInterface(userOnline, arraylist);
+            } catch (RemoteException e) {
+                System.out.println("Connect Exception");
+                userToRemove.add(entry.getKey());
+            }
         }
+        for (String u : userToRemove) {
+            unregisterForCallback(u);
+        }
+        userOnline.values().removeAll(userToRemove);
         System.out.println("Callback complete");
+    }
+
+    public synchronized void sendIpMulticast (String usernameClient) throws RemoteException {
+        System.out.println("username client : "+usernameClient);
+        ClientInt client = clients.get(usernameClient);
+        HashMap<String,String> listIpMulticast = new HashMap<>();
+        for (Progetto p : listProgetti) {
+            if (p.getListMembers().contains(usernameClient)) listIpMulticast.put(p.getNome(),p.getIpMulticast());
+        }
+        if (client == null) System.out.println("CLIENT E' NULL");
+        client.setIpMulticast(listIpMulticast);
     }
 
     //SERVER
@@ -162,21 +184,21 @@ public class Server extends RemoteServer implements ServerInt {
                     if (key.isAcceptable()) {
                         //creo connessione tcp con il client
                         SocketChannel client = serverSocketChannel.accept();
-                        System.out.println("Connection successfully accepted from "+client);
+                        System.out.println("Connection successfully accepted from " + client);
                         client.configureBlocking(false);
-                        SelectionKey keyClient = client.register(selector,SelectionKey.OP_READ);
+                        SelectionKey keyClient = client.register(selector, SelectionKey.OP_READ);
                         String s = "Benvenuto in Worth sviluppato da Leonardo Stoppani";
-                        byte [] bytes = s.getBytes();
+                        byte[] bytes = s.getBytes();
                         ByteBuffer output1 = ByteBuffer.allocate(bytes.length);
                         output1.put(bytes);
                         output1.flip();
                         client.write(output1);
                         System.out.println("SEND : Welcome msg\n");
                         //System.out.println(client.getRemoteAddress().toString());
-                    }else if (key.isReadable()) {
+                    } else if (key.isReadable()) {
                         SocketChannel client = (SocketChannel) key.channel();
                         ByteBuffer input = ByteBuffer.allocate(MAX_SEG_SIZE);
-                        if (client.read(input)==-1) { //leggo dal channel tutta la stringa
+                        if (client.read(input) == -1) { //leggo dal channel tutta la stringa
                             System.out.println("Closing connection with client...");
                             key.cancel();
                             key.channel().close();
@@ -184,19 +206,19 @@ public class Server extends RemoteServer implements ServerInt {
                         }
                         input.flip();//preparo buffer alla lettura
                         String si = new String(input.array(), StandardCharsets.UTF_8);
-                        System.out.println("FROM CLIENT : "+si);
+                        System.out.println("FROM CLIENT : " + si);
                         //System.out.println(si.length());
-                        // TODO: 21/01/21 parsing dei comandi + implementazione comandi
                         StringTokenizer tokenizer = new StringTokenizer(si);
                         String cmd = tokenizer.nextToken().trim();
-                        System.out.println("CMD : "+cmd);
+                        System.out.println("CMD : " + cmd);
                         //PARAMETRI CORRETTI PERCHE' GIA' CONTROLLATI DAL CLIENT
                         ByteBuffer response = ByteBuffer.allocate(MAX_SEG_SIZE);
                         switch (cmd) {
-                            case "login" : {
+                            case "login": {
+                                String clientAddress = client.getRemoteAddress().toString();
                                 String username = tokenizer.nextToken();
                                 String passw = tokenizer.nextToken().trim();
-                                ConcurrentHashMap<String,String> listUser = server.listUser;
+                                ConcurrentHashMap<String, String> listUser = server.listUser;
                                 String hash;
                                 //OPERAZIONE ATOMICA SU CONCURRENT HASH MAP
                                 if ((hash = listUser.get(username)) == null) {//utente non registrato (bug risolto listusers == null)
@@ -204,11 +226,11 @@ public class Server extends RemoteServer implements ServerInt {
                                     response.put(s.getBytes());
                                 } else { //utente registrato, controllo passw
                                     if (BCrypt.checkpw(passw, hash)) {
-                                        if (server.userOnline.putIfAbsent(client.getRemoteAddress().toString(),username) == null) {
+                                        if (server.userOnline.putIfAbsent(client.getRemoteAddress().toString(), username) == null) {
                                             response.put((username + " logged in").getBytes());
                                             server.updateClient();
                                             System.out.println("PASSW OK");
-                                        }else {
+                                        } else {
                                             response.put("Errore : c'e' un utente gia' collegato, deve essere prima scollegato".getBytes());
                                             System.out.println("ALTRO UTENTE GIA' LOGGATO");
                                         }
@@ -220,23 +242,24 @@ public class Server extends RemoteServer implements ServerInt {
                                 key.attach(response);
                                 break;
                             }
-                            case "logout" : {
+                            case "logout": {
                                 String clientAddress = client.getRemoteAddress().toString();
                                 String usernameLoggato = server.userOnline.get(clientAddress);
-                                if (server.userOnline.remove(clientAddress)==null) response.put("Errore : utente non loggato".getBytes());
+                                if (server.userOnline.remove(clientAddress) == null)
+                                    response.put("Errore : utente non loggato".getBytes());
                                 else {
-                                    response.put((usernameLoggato+" scollegato").getBytes());
+                                    response.put((usernameLoggato + " scollegato").getBytes());
                                     server.updateClient();
                                 }
                                 key.attach(response);
                                 break;
                             }
-                            case "listProjects" : {
+                            case "listProjects": {
                                 String clientAddress = client.getRemoteAddress().toString();
                                 String username = server.userOnline.get(clientAddress);
                                 if (username == null) {
                                     response.put("Errore : utente non loggato".getBytes());
-                                }else {
+                                } else {
                                     ArrayList<Progetto> listProgetti = server.listProgetti;
                                     StringBuilder sProgetti = new StringBuilder();
                                     for (Progetto p : listProgetti) {
@@ -245,24 +268,27 @@ public class Server extends RemoteServer implements ServerInt {
                                             sProgetti.append("\n");
                                         }
                                     }
-                                    if (sProgetti.length()==0) response.put("Non fai parte di alcun progetto".getBytes());
+                                    if (sProgetti.length() == 0)
+                                        response.put("Non fai parte di alcun progetto".getBytes());
                                     else response.put(sProgetti.toString().getBytes());
                                 }
                                 key.attach(response);
                                 break;
                             }
-                            case "createProject" : {
+                            case "createProject": {
                                 String clientAddress = client.getRemoteAddress().toString();
                                 String username = server.userOnline.get(clientAddress);
                                 String nameProject = tokenizer.nextToken().trim();
-                                if (username==null) response.put("Errore : utente non loggato".getBytes());
+                                if (username == null) response.put("Errore : utente non loggato".getBytes());
                                 else {
-                                    if (server.contains(nameProject)) response.put("Errore : nome del progetto non disponibile".getBytes());
+                                    if (server.contains(nameProject))
+                                        response.put("Errore : nome del progetto non disponibile".getBytes());
                                     else {
-                                        Progetto p = new Progetto(nameProject);
+                                        Progetto p = new Progetto(nameProject, server.getIpMulticast());
                                         try {
                                             p.addMember(username);
                                             server.listProgetti.add(p);
+                                            server.sendIpMulticast(username);
                                             response.put("Progetto creato con successo".getBytes());
                                         } catch (MemberAlreadyExistException e) {
                                             System.out.println("Utente e' gia' membro del progetto");
@@ -272,25 +298,28 @@ public class Server extends RemoteServer implements ServerInt {
                                 key.attach(response);
                                 break;
                             }
-                            case "addMember" : {
+                            case "addMember": {
                                 String clientAddress = client.getRemoteAddress().toString();
                                 String username = server.userOnline.get(clientAddress);
                                 String projectName = tokenizer.nextToken();
                                 String userToAdd = tokenizer.nextToken().trim();
-                                if (username==null) response.put("Errore : utente non loggato".getBytes());
+                                if (username == null) response.put("Errore : utente non loggato".getBytes());
                                 else {
                                     if (!server.listUser.containsKey(userToAdd))
                                         response.put(("Errore : utente " + userToAdd + " non registrato").getBytes());
                                     else {
                                         Progetto p = server.getProgetto(projectName);
                                         if (p == null) response.put("Errore : il progetto non esiste".getBytes());
-                                        else if (!p.getListMembers().contains(username)) response.put("Errore : non sei un membro del progetto".getBytes());
+                                        else if (!p.getListMembers().contains(username))
+                                            response.put("Errore : non sei un membro del progetto".getBytes());
                                         else {
                                             try {
                                                 p.addMember(userToAdd);
-                                                response.put(("Utente "+userToAdd+" aggiunto al progetto con successo").getBytes());
+                                                response.put(("Utente " + userToAdd + " aggiunto al progetto con successo").getBytes());
+                                                if (server.userOnline.containsValue(userToAdd))
+                                                    server.sendIpMulticast(userToAdd);
                                             } catch (MemberAlreadyExistException e) {
-                                                response.put(("Utente "+userToAdd+" e' gia' un membro del progetto").getBytes());
+                                                response.put(("Utente " + userToAdd + " e' gia' un membro del progetto").getBytes());
                                             }
                                         }
                                     }
@@ -298,15 +327,16 @@ public class Server extends RemoteServer implements ServerInt {
                                 key.attach(response);
                                 break;
                             }
-                            case "showMembers" : {
+                            case "showMembers": {
                                 String projectName = tokenizer.nextToken().trim();
                                 String clientAddress = client.getRemoteAddress().toString();
                                 String username = server.userOnline.get(clientAddress);
-                                if (username==null) response.put("Errore : utente non loggato".getBytes());
+                                if (username == null) response.put("Errore : utente non loggato".getBytes());
                                 else {
                                     Progetto p = server.getProgetto(projectName);
-                                    if (p==null) response.put("Errore : il progetto non esiste".getBytes());
-                                    else if (!p.getListMembers().contains(username)) response.put("Errore : non sei un membro del progetto".getBytes());
+                                    if (p == null) response.put("Errore : il progetto non esiste".getBytes());
+                                    else if (!p.getListMembers().contains(username))
+                                        response.put("Errore : non sei un membro del progetto".getBytes());
                                     else {
                                         ArrayList<String> listMembers = p.getListMembers();
                                         StringBuilder sList = new StringBuilder();
@@ -320,15 +350,16 @@ public class Server extends RemoteServer implements ServerInt {
                                 key.attach(response);
                                 break;
                             }
-                            case "showCards" : {
+                            case "showCards": {
                                 String projectName = tokenizer.nextToken().trim();
                                 String clientAddress = client.getRemoteAddress().toString();
                                 String username = server.userOnline.get(clientAddress);
-                                if (username==null) response.put("Errore : utente non loggato".getBytes());
+                                if (username == null) response.put("Errore : utente non loggato".getBytes());
                                 else {
                                     Progetto p = server.getProgetto(projectName);
-                                    if (p==null) response.put("Errore : il progetto non esiste".getBytes());
-                                    else if (!p.getListMembers().contains(username)) response.put("Errore : non sei un membro del progetto".getBytes());
+                                    if (p == null) response.put("Errore : il progetto non esiste".getBytes());
+                                    else if (!p.getListMembers().contains(username))
+                                        response.put("Errore : non sei un membro del progetto".getBytes());
                                     else {
                                         ArrayList<Card> listCards = p.getListCards();
                                         StringBuilder cList = new StringBuilder();
@@ -341,75 +372,78 @@ public class Server extends RemoteServer implements ServerInt {
                                 key.attach(response);
                                 break;
                             }
-                            case "showCard" : {
+                            case "showCard": {
                                 String projectName = tokenizer.nextToken();
                                 String cardName = tokenizer.nextToken().trim();
                                 String clientAddress = client.getRemoteAddress().toString();
                                 String username = server.userOnline.get(clientAddress);
-                                if (username==null) response.put("Errore : utente non loggato".getBytes());
+                                if (username == null) response.put("Errore : utente non loggato".getBytes());
                                 else {
                                     Progetto p = server.getProgetto(projectName);
-                                    if (p==null) response.put("Errore : il progetto non esiste".getBytes());
-                                    else if (!p.getListMembers().contains(username)) response.put("Errore : non sei un membro del progetto".getBytes());
+                                    if (p == null) response.put("Errore : il progetto non esiste".getBytes());
+                                    else if (!p.getListMembers().contains(username))
+                                        response.put("Errore : non sei un membro del progetto".getBytes());
                                     else {
                                         try {
                                             Card card = p.getCard(cardName);
-                                            response.put(("Card: nome="+card.getNome()+", descrizione="+card.getDescrizione()+", stato="+card.getStato()).getBytes());
+                                            response.put(("Card: nome=" + card.getNome() + ", descrizione=" + card.getDescrizione() + ", stato=" + card.getStato()).getBytes());
                                         } catch (CardNotFoundException e) {
-                                            response.put(("Errore : la card "+cardName+" non esiste nel progetto "+projectName).getBytes());
+                                            response.put(("Errore : la card " + cardName + " non esiste nel progetto " + projectName).getBytes());
                                         }
                                     }
                                 }
                                 key.attach(response);
                                 break;
                             }
-                            case "addCard" : {
+                            case "addCard": {
                                 String projectName = tokenizer.nextToken();
                                 String cardName = tokenizer.nextToken();
                                 StringBuilder descrizione = new StringBuilder();
                                 while (tokenizer.hasMoreTokens()) {
-                                    descrizione.append(tokenizer.nextToken());
+                                    descrizione.append(tokenizer.nextToken()).append(" ");
                                 }
                                 String descrizioneComp = descrizione.toString().trim();
                                 String clientAddress = client.getRemoteAddress().toString();
                                 String username = server.userOnline.get(clientAddress);
-                                if (username==null) response.put("Errore : utente non loggato".getBytes());
+                                if (username == null) response.put("Errore : utente non loggato".getBytes());
                                 else {
                                     Progetto p = server.getProgetto(projectName);
-                                    if (p==null) response.put("Errore : il progetto non esiste".getBytes());
-                                    else if (!p.getListMembers().contains(username)) response.put("Errore : non sei un membro del progetto".getBytes());
+                                    if (p == null) response.put("Errore : il progetto non esiste".getBytes());
+                                    else if (!p.getListMembers().contains(username))
+                                        response.put("Errore : non sei un membro del progetto".getBytes());
                                     else {
                                         try {
-                                            p.addCard(cardName,descrizioneComp);
-                                            response.put(("Card "+cardName+" aggiunta al progetto "+projectName+" con successo").getBytes());
+                                            p.addCard(cardName, descrizioneComp);
+                                            response.put(("Card " + cardName + " aggiunta al progetto " + projectName + " con successo").getBytes());
                                         } catch (CardAlreadyExistException e) {
-                                            response.put(("Card "+cardName+" esiste gia' nel progetto "+projectName).getBytes());
+                                            response.put(("Card " + cardName + " esiste gia' nel progetto " + projectName).getBytes());
                                         }
                                     }
                                 }
                                 key.attach(response);
                                 break;
                             }
-                            case "moveCard" : {
+                            case "moveCard": {
                                 String projectName = tokenizer.nextToken();
                                 String cardName = tokenizer.nextToken();
                                 String listStart = tokenizer.nextToken();
                                 String listDest = tokenizer.nextToken().trim();
                                 String clientAddress = client.getRemoteAddress().toString();
                                 String username = server.userOnline.get(clientAddress);
-                                if (username==null) response.put("Errore : utente non loggato".getBytes());
+                                if (username == null) response.put("Errore : utente non loggato".getBytes());
                                 else {
                                     Progetto p = server.getProgetto(projectName);
-                                    if (p==null) response.put("Errore : il progetto non esiste".getBytes());
-                                    else if (!p.getListMembers().contains(username)) response.put("Errore : non sei un membro del progetto".getBytes());
+                                    if (p == null) response.put("Errore : il progetto non esiste".getBytes());
+                                    else if (!p.getListMembers().contains(username))
+                                        response.put("Errore : non sei un membro del progetto".getBytes());
                                     else {
                                         try {
                                             p.moveCard(cardName, listStart, listDest);
                                             response.put("ok".getBytes());
                                         } catch (CardNotFoundException e) {
-                                            response.put(("Errore : Card "+cardName+" non esiste nel progetto "+projectName).getBytes());
+                                            response.put(("Errore : Card " + cardName + " non esiste nel progetto " + projectName).getBytes());
                                         } catch (WrongStartListException e) {
-                                            response.put(("Errore : Card "+cardName+" non fa parte della lista "+listStart).getBytes());
+                                            response.put(("Errore : Card " + cardName + " non fa parte della lista " + listStart).getBytes());
                                         } catch (ListNotFoundException e) {
                                             response.put("Errore : liste non valide, le liste consentite sono todo,inprogress,toberevised,done".getBytes());
                                         } catch (IllegalMoveException e) {
@@ -421,16 +455,17 @@ public class Server extends RemoteServer implements ServerInt {
                                 key.attach(response);
                                 break;
                             }
-                            case "getCardHistory" : {
+                            case "getCardHistory": {
                                 String projectName = tokenizer.nextToken();
                                 String cardName = tokenizer.nextToken().trim();
                                 String clientAddress = client.getRemoteAddress().toString();
                                 String username = server.userOnline.get(clientAddress);
-                                if (username==null) response.put("Errore : utente non loggato".getBytes());
+                                if (username == null) response.put("Errore : utente non loggato".getBytes());
                                 else {
                                     Progetto p = server.getProgetto(projectName);
-                                    if (p==null) response.put("Errore : il progetto non esiste".getBytes());
-                                    else if (!p.getListMembers().contains(username)) response.put("Errore : non sei un membro del progetto".getBytes());
+                                    if (p == null) response.put("Errore : il progetto non esiste".getBytes());
+                                    else if (!p.getListMembers().contains(username))
+                                        response.put("Errore : non sei un membro del progetto".getBytes());
                                     else {
                                         try {
                                             ArrayList<String> cardHistory = p.getCardHistory(cardName);
@@ -440,27 +475,28 @@ public class Server extends RemoteServer implements ServerInt {
                                             }
                                             response.put(sList.toString().getBytes());
                                         } catch (CardNotFoundException e) {
-                                            response.put(("Errore : Card "+cardName+" non esiste nel progetto "+projectName).getBytes());
+                                            response.put(("Errore : Card " + cardName + " non esiste nel progetto " + projectName).getBytes());
                                         }
                                     }
                                 }
                                 key.attach(response);
                                 break;
                             }
-                            case "cancelProject" : {
+                            case "cancelProject": {
                                 String projectName = tokenizer.nextToken().trim();
                                 String clientAddress = client.getRemoteAddress().toString();
                                 String username = server.userOnline.get(clientAddress);
-                                if (username==null) response.put("Errore : utente non loggato".getBytes());
+                                if (username == null) response.put("Errore : utente non loggato".getBytes());
                                 else {
                                     Progetto p = server.getProgetto(projectName);
-                                    if (p==null) response.put("Errore : il progetto non esiste".getBytes());
-                                    else if (!p.getListMembers().contains(username)) response.put("Errore : non sei un membro del progetto".getBytes());
+                                    if (p == null) response.put("Errore : il progetto non esiste".getBytes());
+                                    else if (!p.getListMembers().contains(username))
+                                        response.put("Errore : non sei un membro del progetto".getBytes());
                                     else {
                                         if (p.readyToCancel()) {
                                             server.listProgetti.remove(p);
-                                            response.put(("Progetto "+projectName+" eliminato con successo").getBytes());
-                                        }else{
+                                            response.put(("Progetto " + projectName + " eliminato con successo").getBytes());
+                                        } else {
                                             response.put("Errore : per poter eliminare un progetto tutte le card devono essere nella lista done".getBytes());
                                         }
                                     }
@@ -473,11 +509,12 @@ public class Server extends RemoteServer implements ServerInt {
                                 key.attach(response);
                         }
                         key.interestOps(SelectionKey.OP_WRITE);
-                    }else if (key.isWritable()) {
+                    } else if (key.isWritable()) {
                         //mando il risultato del comando al client
                         SocketChannel client = (SocketChannel) key.channel();
                         ByteBuffer output2 = (ByteBuffer) key.attachment();
-                        if (output2 == null) System.out.println("Attachment vuoto --> response vuoto --> manca una risposta");
+                        if (output2 == null)
+                            System.out.println("Attachment vuoto --> response vuoto --> manca una risposta");
                         else output2.flip();
                         //System.out.println(new String(output2.array(),StandardCharsets.UTF_8));
                         client.write(output2);
@@ -509,6 +546,47 @@ public class Server extends RemoteServer implements ServerInt {
             if (p.getNome().equals(nameProject)) return p;
         }
         return null;
+    }
+
+    private String getIpMulticast () {
+        while (!availableIp(ipMulticast)) {
+            //incrementa di uno l'indirizzo
+            //System.out.println(ipMulticast);
+            String[] arrayString = ipMulticast.split("\\.");
+            //System.out.println(arrayString.length);
+            int primo = Integer.parseInt(arrayString[3]);
+            int secondo = Integer.parseInt(arrayString[2]);
+            int terzo = Integer.parseInt(arrayString[1]);
+            int quarto = Integer.parseInt(arrayString[0]);
+            if (primo<255) primo++;
+            else if (secondo<255) {
+                secondo++;
+                primo=0;
+            } else if (terzo<255) {
+                terzo++;
+                secondo=0;
+                primo=0;
+            } else if (quarto<239) {
+                quarto++;
+                terzo=0;
+                secondo=0;
+                primo=0;
+            } else { //239.255.255.255 --> torno al primo indirizzo 224.0.0.0
+                quarto=224;
+                terzo=0;
+                secondo=0;
+                primo=0;
+            }
+            ipMulticast = quarto+"."+terzo+"."+secondo+"."+primo;
+        }
+        return ipMulticast;
+    }
+
+    private boolean availableIp (String ipMulticast) {
+        for (Progetto p: listProgetti) {
+            if (p.getIpMulticast().equals(ipMulticast)) return false;
+        }
+        return true;
     }
 
 }

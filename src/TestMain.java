@@ -3,7 +3,7 @@ import java.util.ArrayList;
 public class TestMain {
 
     public static void main(String[] args) throws MemberAlreadyExistException, CardAlreadyExistException {
-        Progetto progetto = new Progetto("prova");
+        Progetto progetto = new Progetto("prova","diocane");
         System.out.println("Progetto: "+progetto.getNome());
         System.out.println();
         //aggiungo e stampo membri progetto
