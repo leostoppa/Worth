@@ -3,7 +3,7 @@ import java.util.ArrayList;
 public class TestMain {
 
     public static void main(String[] args) throws MemberAlreadyExistException, CardAlreadyExistException {
-        Progetto progetto = new Progetto("prova","diocane");
+        Progetto progetto = new Progetto("prova");
         System.out.println("Progetto: "+progetto.getNome());
         System.out.println();
         //aggiungo e stampo membri progetto
@@ -17,8 +17,8 @@ public class TestMain {
         }
         System.out.println();
         //ADD CARD + SHOW CARD
-        progetto.addCard("progetta_interfaccia","progettare la ui dell'app");
-        progetto.addCard("testa_features","testare le nuove funzionalita'");
+        //progetto.addCard("progetta_interfaccia","progettare la ui dell'app");
+        //progetto.addCard("testa_features","testare le nuove funzionalita'");
         ArrayList<Card> listCard = progetto.getListCards();
         System.out.println("Cards:");
         for (Card c : listCard) {
@@ -29,7 +29,7 @@ public class TestMain {
             System.out.println();
         }
         //GET CARD GIUSTO
-        progetto.addCard("terza_card","descrizione terza card");
+        //progetto.addCard("terza_card","descrizione terza card");
         Card card3 = null;
         try {
             card3 = progetto.getCard("terza_card");

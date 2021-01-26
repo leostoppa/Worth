@@ -12,16 +12,25 @@ public class Progetto {
     private final ArrayList<Card> inprogress;
     private final ArrayList<Card> toberevised;
     private final ArrayList<Card> done;
-    private final ArrayList<String> listaMembri; //utenti che possono interagire col progetto
+    private ArrayList<String> listaMembri; //utenti che possono interagire col progetto
 
-    public Progetto (String nome, String ipMulticast) { //crea un nuovo progetto
+    public Progetto (String nome) { //crea un nuovo progetto
         this.nome = nome;
-        this.ipMulticast = ipMulticast;
         todo = new ArrayList<>();
         inprogress = new ArrayList<>();
         toberevised = new ArrayList<>();
         done = new ArrayList<>();
         listaMembri = new ArrayList<>();
+    }
+
+    public void setCard (Card card,String list) throws ListNotFoundException {
+        this.getListCard(list).add(card);
+    }
+
+    public void setListaMembri (ArrayList<String> listaMembri) {this.listaMembri=listaMembri;}
+
+    public void setIpMulticast(String ipMulticast) {
+        this.ipMulticast = ipMulticast;
     }
 
     public boolean readyToCancel () {
@@ -41,11 +50,11 @@ public class Progetto {
         return listaMembri;
     }
 
-    public void addCard (String cardName, String descrizione) throws CardAlreadyExistException {
+    public void addCard (Card card) throws CardAlreadyExistException {
         try {
-            getCard(cardName);
+            getCard(card.getNome());
         } catch (CardNotFoundException e) {
-            todo.add(new Card(cardName,descrizione));
+            todo.add(card);
             return;
         }
         throw new CardAlreadyExistException();

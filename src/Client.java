@@ -418,6 +418,7 @@ public class Client extends RemoteObject implements ClientInt{
                                         InetAddress ia = InetAddress.getByName(client.listIpMulticast.get(projectName));
                                         DatagramPacket dp = new DatagramPacket(data, data.length, ia, client.DEFAULT_PORT_MULTICAST);
                                         ms.send(dp);
+                                        System.out.println("Ok");
                                     } else
                                         System.out.println("Errore : non fai parte del progetto " + projectName + " o non esiste");
                                 } else System.out.println("Errore : utente non loggato");

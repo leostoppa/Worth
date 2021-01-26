@@ -15,6 +15,8 @@ import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
@@ -46,6 +48,7 @@ public class Server extends RemoteServer implements ServerInt {
     final private HashMap<String,ClientInt> clients;
 
     public Server () throws RemoteException {
+
         //AVVIO IL SERVER -> RIPRISTINO LO STATO -> PERSISTENZA
         listUser = new ConcurrentHashMap<>();
         //setto file di login --> se non esiste lo creo, se esiste ripristino il contenuto
@@ -68,6 +71,54 @@ public class Server extends RemoteServer implements ServerInt {
         }
         listProgetti = new ArrayList<>();
         // TODO: 23/01/21 caricare i progetti dal disco
+        File backupDir = new File("progetti");
+        if (backupDir.exists()) {
+            File[] projectsDirList = backupDir.listFiles();
+            if (projectsDirList != null) {
+                for (File projectDir : projectsDirList) {
+                    if (projectDir.isDirectory()) {
+                        Progetto progetto = new Progetto(projectDir.getName());
+                        progetto.setIpMulticast(getIpMulticast());
+                        File[] listFilesProject = projectDir.listFiles();
+                        if (listFilesProject != null) {
+                            //aggiungi membri e card al progetto
+                            for (File fileProject : listFilesProject) {
+                                if (fileProject.getName().equals("listamembri.json")) {
+                                    try {
+                                        Gson gson = new Gson();
+                                        Type type = new TypeToken<ArrayList<String>>() {}.getType();
+                                        File file = new File("progetti/" + projectDir.getName() + "/listamembri.json");
+                                        Reader reader = Files.newBufferedReader(file.toPath());
+                                        progetto.setListaMembri(gson.fromJson(reader, type));
+                                    } catch (IOException e) {
+                                        System.out.println("Errore nel caricamento della lista membri");
+                                        e.printStackTrace();
+                                    }
+                                } else if (fileProject.isDirectory()) {
+                                    File[] cardFileList = fileProject.listFiles();
+                                    if (cardFileList != null) {
+                                        try {
+                                            for (File cardFile : cardFileList) {
+                                                Gson gson = new Gson();
+                                                File file = new File("progetti/"+projectDir.getName()+"/"+fileProject.getName()+"/"+cardFile.getName());
+                                                Reader reader = Files.newBufferedReader(file.toPath());
+                                                progetto.setCard(gson.fromJson(reader, Card.class), fileProject.getName());
+                                            }
+                                        } catch (ListNotFoundException | IOException e) {
+                                            e.printStackTrace();
+                                        }
+                                    } else System.out.println("cartella card : "+fileProject.getName()+" vuota");
+                                }
+                            }
+                            //aggiungi il progetto pronto alla lista
+                            listProgetti.add(progetto);
+                        } else System.out.println("cartella progetto : "+progetto.getNome()+" vuota");
+                    } else System.out.println("NON SONO DIRECTORY");
+                }
+            } else System.out.println("cartella progetti vuota");
+        }else {
+            backupDir.mkdir();
+        }
         userOnline = new HashMap<>();
         clients = new HashMap<>();
     }
@@ -284,12 +335,35 @@ public class Server extends RemoteServer implements ServerInt {
                                     if (server.contains(nameProject))
                                         response.put("Errore : nome del progetto non disponibile".getBytes());
                                     else {
-                                        Progetto p = new Progetto(nameProject, server.getIpMulticast());
+                                        Progetto p = new Progetto(nameProject);
                                         try {
+                                            p.setIpMulticast(server.getIpMulticast());
                                             p.addMember(username);
                                             server.listProgetti.add(p);
                                             server.sendIpMulticast(username);
                                             response.put("Progetto creato con successo".getBytes());
+                                            //---------SALVO MODIFICA SU FILE SYSTEM------------//
+                                            File dirProgetto = new File("progetti/"+nameProject);
+                                            if (dirProgetto.mkdir()) {
+                                                Gson gson = new GsonBuilder().setPrettyPrinting().create();
+                                                File fileMembri = new File("progetti/"+nameProject+"/listamembri.json");
+                                                if (fileMembri.createNewFile()) {
+                                                    Writer writer = new FileWriter(fileMembri);
+                                                    gson.toJson(p.getListMembers(), writer);
+                                                    writer.flush();
+                                                    writer.close();
+                                                }else System.out.println("Fallito backup lista membri");
+                                                File dirTodo = new File("progetti/"+nameProject+"/todo");
+                                                dirTodo.mkdir();
+                                                File dirInprogress = new File("progetti/"+nameProject+"/inprogress");
+                                                dirInprogress.mkdir();
+                                                File dirToberevised = new File("progetti/"+nameProject+"/toberevised");
+                                                dirToberevised.mkdir();
+                                                File dirDone = new File("progetti/"+nameProject+"/done");
+                                                dirDone.mkdir();
+                                                System.out.println("Creata directory progetto : "+nameProject);
+                                            }else System.out.println("Fallita creazione directory progetto "+nameProject);
+                                            //-------------------------------------------------//
                                         } catch (MemberAlreadyExistException e) {
                                             System.out.println("Utente e' gia' membro del progetto");
                                         }
@@ -316,6 +390,14 @@ public class Server extends RemoteServer implements ServerInt {
                                             try {
                                                 p.addMember(userToAdd);
                                                 response.put(("Utente " + userToAdd + " aggiunto al progetto con successo").getBytes());
+                                                //-------SALVO MODIFICA SU FILE SYSTEM----------//
+                                                Gson gson = new GsonBuilder().setPrettyPrinting().create();
+                                                File fileMembri = new File("progetti/"+projectName+"/listamembri.json");
+                                                Writer writer = new FileWriter(fileMembri);
+                                                gson.toJson(p.getListMembers(), writer);
+                                                writer.flush();
+                                                writer.close();
+                                                //--------------------------------------//
                                                 if (server.userOnline.containsValue(userToAdd))
                                                     server.sendIpMulticast(userToAdd);
                                             } catch (MemberAlreadyExistException e) {
@@ -413,8 +495,17 @@ public class Server extends RemoteServer implements ServerInt {
                                         response.put("Errore : non sei un membro del progetto".getBytes());
                                     else {
                                         try {
-                                            p.addCard(cardName, descrizioneComp);
+                                            Card card = new Card(cardName,descrizioneComp);
+                                            p.addCard(card);
                                             response.put(("Card " + cardName + " aggiunta al progetto " + projectName + " con successo").getBytes());
+                                            //----------SALVO MODIFICA SU FILE SYSTEM------------------//
+                                            Gson gson = new GsonBuilder().setPrettyPrinting().create();
+                                            File fileCard = new File("progetti/"+projectName+"/todo/"+cardName+".json");
+                                            Writer writer = new FileWriter(fileCard);
+                                            gson.toJson(card, writer);
+                                            writer.flush();
+                                            writer.close();
+                                            //--------------------------------------------------------//
                                         } catch (CardAlreadyExistException e) {
                                             response.put(("Card " + cardName + " esiste gia' nel progetto " + projectName).getBytes());
                                         }
@@ -440,6 +531,13 @@ public class Server extends RemoteServer implements ServerInt {
                                         try {
                                             p.moveCard(cardName, listStart, listDest);
                                             response.put("ok".getBytes());
+                                            //----------SALVO MODIFICA SU FILE SYSTEM------------------//
+                                            Path source = Path.of("progetti/"+projectName+"/"+listStart+"/"+cardName+".json");
+                                            Path dest = Path.of("progetti/"+projectName+"/"+listDest+"/"+cardName+".json");
+                                            File tmp = new File("progetti/"+projectName+"/"+listDest+"/"+cardName+".json");
+                                            tmp.createNewFile();
+                                            Files.move(source,dest, StandardCopyOption.REPLACE_EXISTING);
+                                            //--------------------------------------------------------//
                                         } catch (CardNotFoundException e) {
                                             response.put(("Errore : Card " + cardName + " non esiste nel progetto " + projectName).getBytes());
                                         } catch (WrongStartListException e) {
@@ -496,6 +594,11 @@ public class Server extends RemoteServer implements ServerInt {
                                         if (p.readyToCancel()) {
                                             server.listProgetti.remove(p);
                                             response.put(("Progetto " + projectName + " eliminato con successo").getBytes());
+                                            //----------SALVO MODIFICA SU FILE SYSTEM------------//
+                                            File dirToRemove = new File("progetti/"+projectName);
+                                            if (server.deleteDirectory(dirToRemove)) System.out.println(projectName+" rimosso con successo");
+                                            else System.out.println("Fallita rimozione progetto dal disco");
+                                            //---------------------------------------------------//
                                         } else {
                                             response.put("Errore : per poter eliminare un progetto tutte le card devono essere nella lista done".getBytes());
                                         }
@@ -587,6 +690,16 @@ public class Server extends RemoteServer implements ServerInt {
             if (p.getIpMulticast().equals(ipMulticast)) return false;
         }
         return true;
+    }
+
+    boolean deleteDirectory(File directoryToBeDeleted) {
+        File[] allContents = directoryToBeDeleted.listFiles();
+        if (allContents != null) {
+            for (File file : allContents) {
+                deleteDirectory(file);
+            }
+        }
+        return directoryToBeDeleted.delete();
     }
 
 }
