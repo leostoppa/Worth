@@ -390,6 +390,7 @@ public class Client extends RemoteObject implements ClientInt{
                                         for (String s : client.listChatProgetti.get(projectName)) {
                                             System.out.println(s);
                                         }
+                                        client.listChatProgetti.put(projectName,new ArrayList<>());
                                     } else {
                                         System.out.println("Errore : non sei un membro del progetto " + projectName + " o non esiste");
                                         System.out.println("Fai parte dei seguenti progetti : " + client.listChatProgetti.keySet());
