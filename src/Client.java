@@ -135,25 +135,31 @@ public class Client extends RemoteObject implements ClientInt{
                                 client.print("Errore : parametri non corretti");
                                 client.print("Formato comando : login username password");
                             } else {
-                                String username = tokenizer.nextToken();
-                                //INVIO COMANDO AL SERVER
-                                output.put(si.getBytes());
-                                output.flip();
-                                socketClient.write(output);
-                                //LEGGO RISPOSTA DEL SERVER
-                                socketClient.read(inputResponse);
-                                inputResponse.flip();
-                                String response = new String(inputResponse.array(), StandardCharsets.UTF_8);
-                                client.print(response);
-                                if (response.contains("logged in")) {
-                                    client.user = username;
-                                    client.stato = "online";
-                                    Registry registry = LocateRegistry.getRegistry(DEFAULT_PORT_RMI);
-                                    ServerInt server = (ServerInt) registry.lookup("WORTH-SERVER");
-                                    //CLIENT SI REGISTRA PER LA CALLBACK
-                                    //client.print("Mi sto registrando per la callback...");
-                                    server.registerForCallback(client.user, stub);
-                                    //client.print("Registrazione effettuata");
+                                if (client.stato.equals("online")) client.print("Errore : c'e' un utente gia' collegato, deve essere prima scollegato");
+                                else {
+                                    String username = tokenizer.nextToken();
+                                    //INVIO COMANDO AL SERVER
+                                    output.put(si.getBytes());
+                                    output.flip();
+                                    socketClient.write(output);
+                                    //LEGGO RISPOSTA DEL SERVER
+                                    if (socketClient.read(inputResponse) == -1) {
+                                        client.print("Connessione col server persa");
+                                        System.exit(-1);
+                                    }
+                                    inputResponse.flip();
+                                    String response = new String(inputResponse.array(), StandardCharsets.UTF_8);
+                                    client.print(response);
+                                    if (response.contains("logged in")) {
+                                        client.user = username;
+                                        client.stato = "online";
+                                        Registry registry = LocateRegistry.getRegistry(DEFAULT_PORT_RMI);
+                                        ServerInt server = (ServerInt) registry.lookup("WORTH-SERVER");
+                                        //CLIENT SI REGISTRA PER LA CALLBACK
+                                        //client.print("Mi sto registrando per la callback...");
+                                        server.registerForCallback(client.user, stub);
+                                        //client.print("Registrazione effettuata");
+                                    /*
                                     for (Map.Entry<String, String> entry : client.listIpMulticast.entrySet()) {
                                         MulticastSocket ms = new MulticastSocket(client.DEFAULT_PORT_MULTICAST);
                                         ms.joinGroup(InetAddress.getByName(entry.getValue()));
@@ -161,6 +167,8 @@ public class Client extends RemoteObject implements ClientInt{
                                         Thread thread = new Thread(new LettoreChat(client.listChatProgetti.get(entry.getKey()), ms, InetAddress.getByName(entry.getValue())));
                                         thread.start();
                                         client.threads.add(thread);
+                                    }
+                                    */
                                     }
                                 }
                             }
@@ -177,7 +185,10 @@ public class Client extends RemoteObject implements ClientInt{
                                 output.flip();
                                 socketClient.write(output);
                                 //LEGGO RISPOSTA DEL SERVER
-                                socketClient.read(inputResponse);
+                                if (socketClient.read(inputResponse) == -1) {
+                                    client.print("Connessione col server persa");
+                                    System.exit(-1);
+                                }
                                 inputResponse.flip();
                                 String response = new String(inputResponse.array(), StandardCharsets.UTF_8);
                                 client.print(response);
@@ -191,6 +202,8 @@ public class Client extends RemoteObject implements ClientInt{
                                     }
                                     client.threads = new ArrayList<>();
                                     client.user = null;
+                                    client.listChatProgetti = new HashMap<>();
+                                    client.listMulticastSocket = new HashMap<>();
                                 }
                             }
                             break;
@@ -239,7 +252,10 @@ public class Client extends RemoteObject implements ClientInt{
                                 output.flip();
                                 socketClient.write(output);
                                 //LEGGO RISPOSTA DEL SERVER
-                                socketClient.read(inputResponse);
+                                if (socketClient.read(inputResponse) == -1) {
+                                    client.print("Connessione col server persa");
+                                    System.exit(-1);
+                                }
                                 inputResponse.flip();
                                 System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
                             }
@@ -256,7 +272,10 @@ public class Client extends RemoteObject implements ClientInt{
                                 output.flip();
                                 socketClient.write(output);
                                 //LEGGO RISPOSTA DEL SERVER
-                                socketClient.read(inputResponse);
+                                if (socketClient.read(inputResponse) == -1) {
+                                    client.print("Connessione col server persa");
+                                    System.exit(-1);
+                                }
                                 inputResponse.flip();
                                 client.print(new String(inputResponse.array(), StandardCharsets.UTF_8));
                             }
@@ -273,7 +292,10 @@ public class Client extends RemoteObject implements ClientInt{
                                 output.flip();
                                 socketClient.write(output);
                                 //LEGGO RISPOSTA DEL SERVER
-                                socketClient.read(inputResponse);
+                                if (socketClient.read(inputResponse) == -1) {
+                                    client.print("Connessione col server persa");
+                                    System.exit(-1);
+                                }
                                 inputResponse.flip();
                                 client.print(new String(inputResponse.array(), StandardCharsets.UTF_8));
                             }
@@ -290,7 +312,10 @@ public class Client extends RemoteObject implements ClientInt{
                                 output.flip();
                                 socketClient.write(output);
                                 //LEGGO RISPOSTA DEL SERVER
-                                socketClient.read(inputResponse);
+                                if (socketClient.read(inputResponse) == -1) {
+                                    client.print("Connessione col server persa");
+                                    System.exit(-1);
+                                }
                                 inputResponse.flip();
                                 System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
                             }
@@ -307,7 +332,10 @@ public class Client extends RemoteObject implements ClientInt{
                                 output.flip();
                                 socketClient.write(output);
                                 //LEGGO RISPOSTA DEL SERVER
-                                socketClient.read(inputResponse);
+                                if (socketClient.read(inputResponse) == -1) {
+                                    client.print("Connessione col server persa");
+                                    System.exit(-1);
+                                }
                                 inputResponse.flip();
                                 System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
                             }
@@ -324,7 +352,10 @@ public class Client extends RemoteObject implements ClientInt{
                                 output.flip();
                                 socketClient.write(output);
                                 //LEGGO RISPOSTA DEL SERVER
-                                socketClient.read(inputResponse);
+                                if (socketClient.read(inputResponse) == -1) {
+                                    client.print("Connessione col server persa");
+                                    System.exit(-1);
+                                }
                                 inputResponse.flip();
                                 client.print(new String(inputResponse.array(), StandardCharsets.UTF_8));
                             }
@@ -341,7 +372,10 @@ public class Client extends RemoteObject implements ClientInt{
                                 output.flip();
                                 socketClient.write(output);
                                 //LEGGO RISPOSTA DEL SERVER
-                                socketClient.read(inputResponse);
+                                if (socketClient.read(inputResponse) == -1) {
+                                    client.print("Connessione col server persa");
+                                    System.exit(-1);
+                                }
                                 inputResponse.flip();
                                 client.print(new String(inputResponse.array(), StandardCharsets.UTF_8));
                             }
@@ -358,7 +392,10 @@ public class Client extends RemoteObject implements ClientInt{
                                 output.flip();
                                 socketClient.write(output);
                                 //LEGGO RISPOSTA DEL SERVER
-                                socketClient.read(inputResponse);
+                                if (socketClient.read(inputResponse) == -1) {
+                                    client.print("Connessione col server persa");
+                                    System.exit(-1);
+                                }
                                 inputResponse.flip();
                                 client.print(new String(inputResponse.array(), StandardCharsets.UTF_8));
                             }
@@ -375,7 +412,10 @@ public class Client extends RemoteObject implements ClientInt{
                                 output.flip();
                                 socketClient.write(output);
                                 //LEGGO RISPOSTA DEL SERVER
-                                socketClient.read(inputResponse);
+                                if (socketClient.read(inputResponse) == -1) {
+                                    client.print("Connessione col server persa");
+                                    System.exit(-1);
+                                }
                                 inputResponse.flip();
                                 System.out.println(new String(inputResponse.array(), StandardCharsets.UTF_8));
                             }
@@ -390,7 +430,7 @@ public class Client extends RemoteObject implements ClientInt{
                                         for (String s : client.listChatProgetti.get(projectName)) {
                                             System.out.println(s);
                                         }
-                                        client.listChatProgetti.put(projectName,new ArrayList<>());
+                                        client.listChatProgetti.get(projectName).clear();
                                     } else {
                                         System.out.println("Errore : non sei un membro del progetto " + projectName + " o non esiste");
                                         System.out.println("Fai parte dei seguenti progetti : " + client.listChatProgetti.keySet());

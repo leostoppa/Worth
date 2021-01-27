@@ -19,6 +19,7 @@ public class LettoreChat implements Runnable{
 
     public void run() {
         byte [] buffer;
+        //System.out.println("THREADLETTORE");
         while (true) {
             try {
                 buffer = new byte[8192];
@@ -26,6 +27,7 @@ public class LettoreChat implements Runnable{
                 ms.receive(dp);
                 String s = new String(dp.getData());
                 chat.add(s);
+                //System.out.println("Messaggio ricevuto");
             } catch (IOException e) {
                 e.printStackTrace();
                 if (ms!=null) {

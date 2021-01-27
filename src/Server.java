@@ -40,11 +40,10 @@ public class Server extends RemoteServer implements ServerInt {
     // contiene tutti i progetti creati
     //ACCESSO SEQUENZIALE
     private ArrayList<Progetto> listProgetti;
-    // TODO: 23/01/21 RENDERE PERSISTENTE I PROGETTI SU DISCO
     //coppie socket add client - username --> con quale username il client si e' loggato
     //ACCESSO SEQUENZIALE
     final private HashMap<String,String> userOnline;
-    //lista dei client registrati per la callback
+    //lista dei client registrati per la callback , coppie username - ClientInt
     final private HashMap<String,ClientInt> clients;
 
     public Server () throws RemoteException {
@@ -70,7 +69,6 @@ public class Server extends RemoteServer implements ServerInt {
             }
         }
         listProgetti = new ArrayList<>();
-        // TODO: 23/01/21 caricare i progetti dal disco
         File backupDir = new File("progetti");
         if (backupDir.exists()) {
             File[] projectsDirList = backupDir.listFiles();
@@ -144,6 +142,7 @@ public class Server extends RemoteServer implements ServerInt {
         return "ok";
     }
 
+    //controlla il socket address x vedere se registrare o no
     public synchronized void registerForCallback(String username, ClientInt clientInterface) throws RemoteException {
             if (clients.putIfAbsent(username,clientInterface)==null) {
             System.out.println("New client registered for callback");
@@ -180,12 +179,12 @@ public class Server extends RemoteServer implements ServerInt {
         System.out.println("Callback complete");
     }
 
-    public synchronized void sendIpMulticast (String usernameClient) throws RemoteException {
-        System.out.println("username client : "+usernameClient);
-        ClientInt client = clients.get(usernameClient);
+    public synchronized void sendIpMulticast (String username) throws RemoteException {
+        System.out.println("username client : "+username);
+        ClientInt client = clients.get(username);
         HashMap<String,String> listIpMulticast = new HashMap<>();
         for (Progetto p : listProgetti) {
-            if (p.getListMembers().contains(usernameClient)) listIpMulticast.put(p.getNome(),p.getIpMulticast());
+            if (p.getListMembers().contains(username)) listIpMulticast.put(p.getNome(),p.getIpMulticast());
         }
         if (client == null) System.out.println("CLIENT E' NULL");
         client.setIpMulticast(listIpMulticast);
@@ -251,6 +250,8 @@ public class Server extends RemoteServer implements ServerInt {
                         ByteBuffer input = ByteBuffer.allocate(MAX_SEG_SIZE);
                         if (client.read(input) == -1) { //leggo dal channel tutta la stringa
                             System.out.println("Closing connection with client...");
+                            server.userOnline.remove(client.getRemoteAddress().toString());
+                            server.updateClient();
                             key.cancel();
                             key.channel().close();
                             continue;
@@ -277,12 +278,13 @@ public class Server extends RemoteServer implements ServerInt {
                                     response.put(s.getBytes());
                                 } else { //utente registrato, controllo passw
                                     if (BCrypt.checkpw(passw, hash)) {
-                                        if (server.userOnline.putIfAbsent(client.getRemoteAddress().toString(), username) == null) {
+                                        if (!server.userOnline.containsValue(username)) { //utente puo' loggarsi su un solo client
+                                            server.userOnline.put(clientAddress,username);
                                             response.put((username + " logged in").getBytes());
                                             server.updateClient();
                                             System.out.println("PASSW OK");
                                         } else {
-                                            response.put("Errore : c'e' un utente gia' collegato, deve essere prima scollegato".getBytes());
+                                            response.put("Errore : utente online su un altro client, deve essere prima scollegato".getBytes());
                                             System.out.println("ALTRO UTENTE GIA' LOGGATO");
                                         }
                                     } else {
@@ -448,7 +450,8 @@ public class Server extends RemoteServer implements ServerInt {
                                         for (Card c : listCards) {
                                             cList.append("< ").append("Card: ").append("nome=").append(c.getNome()).append(" ").append("stato=").append(c.getStato()).append("\n");
                                         }
-                                        response.put(cList.toString().getBytes());
+                                        if (cList.length()==0) response.put(("Non ci sono card nel progetto "+projectName).getBytes());
+                                        else response.put(cList.toString().getBytes());
                                     }
                                 }
                                 key.attach(response);
