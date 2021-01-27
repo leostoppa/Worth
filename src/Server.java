@@ -105,15 +105,15 @@ public class Server extends RemoteServer implements ServerInt {
                                         } catch (ListNotFoundException | IOException e) {
                                             e.printStackTrace();
                                         }
-                                    } else System.out.println("cartella card : "+fileProject.getName()+" vuota");
+                                    } //else System.out.println("cartella card : "+fileProject.getName()+" vuota");
                                 }
                             }
                             //aggiungi il progetto pronto alla lista
                             listProgetti.add(progetto);
-                        } else System.out.println("cartella progetto : "+progetto.getNome()+" vuota");
-                    } else System.out.println("NON SONO DIRECTORY");
+                        } //else System.out.println("cartella progetto : "+progetto.getNome()+" vuota");
+                    } //else System.out.println("NON SONO DIRECTORY");
                 }
-            } else System.out.println("cartella progetti vuota");
+            } //else System.out.println("cartella progetti vuota");
         }else {
             backupDir.mkdir();
         }
@@ -145,7 +145,7 @@ public class Server extends RemoteServer implements ServerInt {
     //controlla il socket address x vedere se registrare o no
     public synchronized void registerForCallback(String username, ClientInt clientInterface) throws RemoteException {
             if (clients.putIfAbsent(username,clientInterface)==null) {
-            System.out.println("New client registered for callback");
+            System.out.println("Nuovo client registrato per le Callback");
             updateClient();
             sendIpMulticast(username);
         }
@@ -153,22 +153,22 @@ public class Server extends RemoteServer implements ServerInt {
 
     public synchronized void unregisterForCallback(String username) throws RemoteException {
         if (clients.remove(username)!=null) {
-            System.out.println("Client unregistered");
+            System.out.println("Rimossa registrazione client per le Callback");
         }else{
-            System.out.println("Unable to unregister client");
+            System.out.println("Impossibile registrare client per le Callback");
         }
     }
 
     public synchronized void updateClient () throws RemoteException {
         ArrayList<String> arraylist = new ArrayList<>(listUser.keySet());
         ArrayList<String> userToRemove = new ArrayList<>();
-        System.out.println("Starting Callbacks");
+        //System.out.println("Inizio Callbacks");
         for (Map.Entry<String,ClientInt> entry : clients.entrySet()) {
-            System.out.println("AGGIORNO CLIENT");
+            //System.out.println("AGGIORNO CLIENT");
             try {
                 entry.getValue().updateUserListInterface(userOnline, arraylist);
             } catch (RemoteException e) {
-                System.out.println("Connect Exception");
+                System.out.println("Client interrotto");
                 userToRemove.add(entry.getKey());
             }
         }
@@ -176,24 +176,26 @@ public class Server extends RemoteServer implements ServerInt {
             unregisterForCallback(u);
         }
         userOnline.values().removeAll(userToRemove);
-        System.out.println("Callback complete");
+        //System.out.println("Callback completate");
     }
 
     public synchronized void sendIpMulticast (String username) throws RemoteException {
-        System.out.println("username client : "+username);
+        //System.out.println("username client : "+username);
         ClientInt client = clients.get(username);
         HashMap<String,String> listIpMulticast = new HashMap<>();
         for (Progetto p : listProgetti) {
             if (p.getListMembers().contains(username)) listIpMulticast.put(p.getNome(),p.getIpMulticast());
         }
-        if (client == null) System.out.println("CLIENT E' NULL");
-        client.setIpMulticast(listIpMulticast);
+        //if (client == null) System.out.println("CLIENT E' NULL");
+        if (client!=null) {
+            client.setIpMulticast(listIpMulticast);
+        } //else utente offline, verra' aggiornato al prossimo login
     }
 
     //SERVER
     public static void main(String[] args) {
 
-        System.out.println("Server starting ... listening on port "+DEFAULT_PORT_SERVER);
+        System.out.println("Avvio il server in ascolto sulla porta "+DEFAULT_PORT_SERVER);
 
         ServerSocketChannel serverSocketChannel;
         Selector selector;
@@ -234,7 +236,7 @@ public class Server extends RemoteServer implements ServerInt {
                     if (key.isAcceptable()) {
                         //creo connessione tcp con il client
                         SocketChannel client = serverSocketChannel.accept();
-                        System.out.println("Connection successfully accepted from " + client);
+                        System.out.println("Connessione accetta col client : " + client);
                         client.configureBlocking(false);
                         SelectionKey keyClient = client.register(selector, SelectionKey.OP_READ);
                         String s = "Benvenuto in Worth sviluppato da Leonardo Stoppani";
@@ -249,7 +251,7 @@ public class Server extends RemoteServer implements ServerInt {
                         SocketChannel client = (SocketChannel) key.channel();
                         ByteBuffer input = ByteBuffer.allocate(MAX_SEG_SIZE);
                         if (client.read(input) == -1) { //leggo dal channel tutta la stringa
-                            System.out.println("Closing connection with client...");
+                            System.out.println("Chiudo la connessione con il client...");
                             server.userOnline.remove(client.getRemoteAddress().toString());
                             server.updateClient();
                             key.cancel();
@@ -258,11 +260,11 @@ public class Server extends RemoteServer implements ServerInt {
                         }
                         input.flip();//preparo buffer alla lettura
                         String si = new String(input.array(), StandardCharsets.UTF_8);
-                        System.out.println("FROM CLIENT : " + si);
+                        //System.out.println("FROM CLIENT : " + si);
                         //System.out.println(si.length());
                         StringTokenizer tokenizer = new StringTokenizer(si);
                         String cmd = tokenizer.nextToken().trim();
-                        System.out.println("CMD : " + cmd);
+                        //System.out.println("CMD : " + cmd);
                         //PARAMETRI CORRETTI PERCHE' GIA' CONTROLLATI DAL CLIENT
                         ByteBuffer response = ByteBuffer.allocate(MAX_SEG_SIZE);
                         switch (cmd) {
@@ -282,14 +284,14 @@ public class Server extends RemoteServer implements ServerInt {
                                             server.userOnline.put(clientAddress,username);
                                             response.put((username + " logged in").getBytes());
                                             server.updateClient();
-                                            System.out.println("PASSW OK");
+                                            //System.out.println("PASSW OK");
                                         } else {
                                             response.put("Errore : utente online su un altro client, deve essere prima scollegato".getBytes());
-                                            System.out.println("ALTRO UTENTE GIA' LOGGATO");
+                                            //System.out.println("ALTRO UTENTE GIA' LOGGATO");
                                         }
                                     } else {
                                         response.put(("Errore : password errata").getBytes());
-                                        System.out.println("PASSW ERRATA");
+                                        //System.out.println("PASSW ERRATA");
                                     }
                                 }
                                 key.attach(response);
@@ -367,7 +369,7 @@ public class Server extends RemoteServer implements ServerInt {
                                             }else System.out.println("Fallita creazione directory progetto "+nameProject);
                                             //-------------------------------------------------//
                                         } catch (MemberAlreadyExistException e) {
-                                            System.out.println("Utente e' gia' membro del progetto");
+                                            response.put("Utente e' gia' membro del progetto".getBytes());
                                         }
                                     }
                                 }
@@ -596,10 +598,14 @@ public class Server extends RemoteServer implements ServerInt {
                                     else {
                                         if (p.readyToCancel()) {
                                             server.listProgetti.remove(p);
+                                            for (String userToUpdate :
+                                                    p.getListMembers()) {
+                                                server.sendIpMulticast(userToUpdate);
+                                            }
                                             response.put(("Progetto " + projectName + " eliminato con successo").getBytes());
                                             //----------SALVO MODIFICA SU FILE SYSTEM------------//
                                             File dirToRemove = new File("progetti/"+projectName);
-                                            if (server.deleteDirectory(dirToRemove)) System.out.println(projectName+" rimosso con successo");
+                                            if (server.deleteDirectory(dirToRemove)) System.out.println(projectName+" eliminato con successo");
                                             else System.out.println("Fallita rimozione progetto dal disco");
                                             //---------------------------------------------------//
                                         } else {
@@ -619,12 +625,15 @@ public class Server extends RemoteServer implements ServerInt {
                         //mando il risultato del comando al client
                         SocketChannel client = (SocketChannel) key.channel();
                         ByteBuffer output2 = (ByteBuffer) key.attachment();
-                        if (output2 == null)
-                            System.out.println("Attachment vuoto --> response vuoto --> manca una risposta");
-                        else output2.flip();
+                        if (output2 == null) {
+                            System.out.println("Attachment vuoto --> response vuoto --> manca una risposta --> invio risposta default");
+                            output2 = ByteBuffer.allocate(MAX_SEG_SIZE);
+                            output2.put("Errore nel server : non e' stato possibile elaborare una risposta".getBytes());
+                        }
+                        output2.flip();
                         //System.out.println(new String(output2.array(),StandardCharsets.UTF_8));
                         client.write(output2);
-                        System.out.println("SEND : Response");
+                        //System.out.println("SEND : Response");
                         key.interestOps(SelectionKey.OP_READ);
                     }
                 } catch (IOException e) {

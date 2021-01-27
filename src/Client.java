@@ -71,7 +71,7 @@ public class Client extends RemoteObject implements ClientInt{
     }
 
     public static void main(String[] args) {
-        System.out.println("Mi sto connettendo a Worth all'indirizzo ip: " + DEFAULT_IP + " e porta: " + DEFAULT_PORT_SERVER + " ...");
+        System.out.println("Mi sto connettendo a Worth ...");
         Client client;
         SocketChannel socketClient = null;
         try {
@@ -79,7 +79,7 @@ public class Client extends RemoteObject implements ClientInt{
             ClientInt stub = (ClientInt) UnicastRemoteObject.exportObject(client, 0);
             SocketAddress address = new InetSocketAddress(DEFAULT_IP, DEFAULT_PORT_SERVER);
             socketClient = SocketChannel.open(address);
-            System.out.println("Connessione a Worth avvenuta con successo su " + socketClient);
+            //System.out.println("Connessione a Worth avvenuta con successo su " + socketClient);
             ByteBuffer inputWelcome = ByteBuffer.allocate(MAX_SEG_SIZE);
             socketClient.read(inputWelcome); //leggo messaggio di benvenuto dal server
             inputWelcome.flip();
@@ -428,14 +428,14 @@ public class Client extends RemoteObject implements ClientInt{
                                 if (client.stato.equals("online")) {
                                     if (client.listChatProgetti.containsKey(projectName)) {
                                         for (String s : client.listChatProgetti.get(projectName)) {
-                                            System.out.println(s);
+                                            client.print(s);
                                         }
                                         client.listChatProgetti.get(projectName).clear();
                                     } else {
-                                        System.out.println("Errore : non sei un membro del progetto " + projectName + " o non esiste");
-                                        System.out.println("Fai parte dei seguenti progetti : " + client.listChatProgetti.keySet());
+                                        client.print("Errore : non sei un membro del progetto " + projectName + " o non esiste");
+                                        client.print("Fai parte dei seguenti progetti : " + client.listChatProgetti.keySet());
                                     }
-                                } else System.out.println("Errore : utente non loggato");
+                                } else client.print("Errore : utente non loggato");
                             } catch (NoSuchElementException e) {
                                 client.print("Errore : parametri non corretti");
                                 client.print("Formato comando : readChat projectName");
@@ -459,10 +459,10 @@ public class Client extends RemoteObject implements ClientInt{
                                         InetAddress ia = InetAddress.getByName(client.listIpMulticast.get(projectName));
                                         DatagramPacket dp = new DatagramPacket(data, data.length, ia, client.DEFAULT_PORT_MULTICAST);
                                         ms.send(dp);
-                                        System.out.println("Ok");
+                                        client.print("Messaggio inviato");
                                     } else
-                                        System.out.println("Errore : non fai parte del progetto " + projectName + " o non esiste");
-                                } else System.out.println("Errore : utente non loggato");
+                                        client.print("Errore : non fai parte del progetto " + projectName + " o non esiste");
+                                } else client.print("Errore : utente non loggato");
                             } catch (NoSuchElementException e) {
                                 client.print("Errore : parametri non corretti");
                                 client.print("Formato comando : sendChatMsg projectName messaggio");
@@ -482,13 +482,14 @@ public class Client extends RemoteObject implements ClientInt{
                                 //LEGGO RISPOSTA DEL SERVER
                                 socketClient.read(inputResponse);
                                 inputResponse.flip();
-                                client.print(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                                String s = new String(inputResponse.array(), StandardCharsets.UTF_8);
+                                client.print(s);
                             }
                             break;
                         }
                         default:
                             client.print("Errore : comando non supportato");
-                            //// TODO: 22/01/21 stampa help message
+                            client.print("Usare il comando help per vedere tutti i comandi supportati");
                     }
                 } catch (NoSuchElementException ignored) {
                 }
