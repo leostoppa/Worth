@@ -13,7 +13,7 @@ import java.rmi.server.RemoteObject;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.*;
 
-public class Client extends RemoteObject implements ClientInt{
+public class ClientMain extends RemoteObject implements ClientInt{
 
     private static final int DEFAULT_PORT_SERVER = 2000;
     private final static int DEFAULT_PORT_RMI = 1950;
@@ -34,7 +34,7 @@ public class Client extends RemoteObject implements ClientInt{
     //LISTA DI THREADLETTORI ATTIVI - AGGIORNATA DAL CLIENT A SECONDA DELLO USER ONLINE
     private ArrayList<Thread> threads;
 
-    public Client() throws RemoteException {
+    public ClientMain() throws RemoteException {
         user=null;
         stato="offline";
         listAllUser = new HashMap<>();
@@ -74,10 +74,10 @@ public class Client extends RemoteObject implements ClientInt{
 
     public static void main(String[] args) {
         System.out.println("Mi sto connettendo a Worth ...");
-        Client client;
+        ClientMain client;
         SocketChannel socketClient = null;
         try {
-            client = new Client();
+            client = new ClientMain();
             ClientInt stub = (ClientInt) UnicastRemoteObject.exportObject(client, 0);
             SocketAddress address = new InetSocketAddress(DEFAULT_IP, DEFAULT_PORT_SERVER);
             socketClient = SocketChannel.open(address);
