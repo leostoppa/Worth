@@ -35,22 +35,21 @@ public class Server extends RemoteServer implements ServerInt {
     final static int MAX_SEG_SIZE = 512;
     private String ipMulticast = "224.0.0.0";
     //HashMap <username, hash> -> contiene le info per il login
-    //ACCESSO CONCORRENTE MULTITHREAD
+    //LISTA COPPIE <USERNAME,HASH> ACCESSO CONCORRENTE MULTITHREAD - AGGIORNATA DA METODO REGISTER RMI
     private ConcurrentHashMap<String,String> listUser;
-    // contiene tutti i progetti creati
-    //ACCESSO SEQUENZIALE
+    //LISTA PROGETTI - ACCESSO SEQUENZIALE
     private ArrayList<Progetto> listProgetti;
     //coppie socket add client - username --> con quale username il client si e' loggato
-    //ACCESSO SEQUENZIALE
+    //LISTA COPPIE <SOCKETADDCLIENT,USERNAME> --> CON QUALE USERNAME SI E' LOGGATO IL CLIENT - AMMESSO LOGIN STESSO USER SU UN SOLO CLIENT - ACCESSO SEQUENZIALE
     final private HashMap<String,String> userOnline;
-    //lista dei client registrati per la callback , coppie username - ClientInt
+    //LISTA COPPIE <USERNAME,CLIENTINT> - CLIENT REGISTRATI PER LE CALLBACK
     final private HashMap<String,ClientInt> clients;
 
     public Server () throws RemoteException {
 
-        //AVVIO IL SERVER -> RIPRISTINO LO STATO -> PERSISTENZA
+        //AVVIO IL SERVER -> RIPRISTINO LO STATO DALL'ULTIMA VOLTA CHE E' STATO ARRESTATO O CRASHATO-> PERSISTENZA
         listUser = new ConcurrentHashMap<>();
-        //setto file di login --> se non esiste lo creo, se esiste ripristino il contenuto
+        //SETTO FILE LOGIN --> se non esiste lo creo, se esiste ripristino il contenuto
         File loginFile = new File ("Login.json");
         if (loginFile.length()>0) {
             try {
@@ -68,6 +67,7 @@ public class Server extends RemoteServer implements ServerInt {
                 e.printStackTrace();
             }
         }
+        //SE PRESENTI, CARICO DA DISCO IN MEMORIA I PROGETTI
         listProgetti = new ArrayList<>();
         File backupDir = new File("progetti");
         if (backupDir.exists()) {
@@ -121,8 +121,7 @@ public class Server extends RemoteServer implements ServerInt {
         clients = new HashMap<>();
     }
 
-    //METODI RMI
-
+    //METODO RMI CHIAMATO DAL CLIENT PER REGISTRARSI
     public String register(String username, String password) throws RemoteException {
         try {
             //HASH PASSWORD CON BCRYPT
@@ -142,7 +141,7 @@ public class Server extends RemoteServer implements ServerInt {
         return "ok";
     }
 
-    //controlla il socket address x vedere se registrare o no
+    //METODO RMI CHIAMATO DAL CLIENT PER REGISTRARSI ALLE CALLBACK - QUANDO SI REGISTRA (PASSA ONLINE) AGGIORNO LA LISTA UTENTI E SETTO LE CHAT DEL CLIENT
     public synchronized void registerForCallback(String username, ClientInt clientInterface) throws RemoteException {
             if (clients.putIfAbsent(username,clientInterface)==null) {
             System.out.println("Nuovo client registrato per le Callback");
@@ -151,14 +150,16 @@ public class Server extends RemoteServer implements ServerInt {
         }
     }
 
+    //METODO RMI CHIAMATO DAL CLIENT PER ELIMINARE LA REGISTRAZIONE PER LE CALLBACK
     public synchronized void unregisterForCallback(String username) throws RemoteException {
         if (clients.remove(username)!=null) {
             System.out.println("Rimossa registrazione client per le Callback");
         }else{
-            System.out.println("Impossibile registrare client per le Callback");
+            //System.out.println("Registrazione client per le Callback gia' rimossa");
         }
     }
 
+    //AGGIORNA LA LISTA UTENTI DEI CLIENT CON I LORO METODI RMI - CATTURA ECCEZIONI DOVUTE AD EVENTUALI CRASH DEI CLIENT
     public synchronized void updateClient () throws RemoteException {
         ArrayList<String> arraylist = new ArrayList<>(listUser.keySet());
         ArrayList<String> userToRemove = new ArrayList<>();
@@ -179,6 +180,7 @@ public class Server extends RemoteServer implements ServerInt {
         //System.out.println("Callback completate");
     }
 
+    //SETTA LE CHAT DEL CLIENT COL SUO METODO RMI
     public synchronized void sendIpMulticast (String username) throws RemoteException {
         //System.out.println("username client : "+username);
         ClientInt client = clients.get(username);
@@ -192,7 +194,7 @@ public class Server extends RemoteServer implements ServerInt {
         } //else utente offline, verra' aggiornato al prossimo login
     }
 
-    //SERVER
+    //MAIN SERVER
     public static void main(String[] args) {
 
         System.out.println("Avvio il server in ascolto sulla porta "+DEFAULT_PORT_SERVER);
@@ -275,7 +277,7 @@ public class Server extends RemoteServer implements ServerInt {
                                 ConcurrentHashMap<String, String> listUser = server.listUser;
                                 String hash;
                                 //OPERAZIONE ATOMICA SU CONCURRENT HASH MAP
-                                if ((hash = listUser.get(username)) == null) {//utente non registrato (bug risolto listusers == null)
+                                if ((hash = listUser.get(username)) == null) {//utente non registrato
                                     String s = "Errore : utente " + username + " non esiste";
                                     response.put(s.getBytes());
                                 } else { //utente registrato, controllo passw
@@ -283,7 +285,6 @@ public class Server extends RemoteServer implements ServerInt {
                                         if (!server.userOnline.containsValue(username)) { //utente puo' loggarsi su un solo client
                                             server.userOnline.put(clientAddress,username);
                                             response.put((username + " logged in").getBytes());
-                                            server.updateClient();
                                             //System.out.println("PASSW OK");
                                         } else {
                                             response.put("Errore : utente online su un altro client, deve essere prima scollegato".getBytes());
@@ -309,7 +310,7 @@ public class Server extends RemoteServer implements ServerInt {
                                 key.attach(response);
                                 break;
                             }
-                            case "listProjects": {
+                            case "list_projects": {
                                 String clientAddress = client.getRemoteAddress().toString();
                                 String username = server.userOnline.get(clientAddress);
                                 if (username == null) {
@@ -330,7 +331,7 @@ public class Server extends RemoteServer implements ServerInt {
                                 key.attach(response);
                                 break;
                             }
-                            case "createProject": {
+                            case "create_project": {
                                 String clientAddress = client.getRemoteAddress().toString();
                                 String username = server.userOnline.get(clientAddress);
                                 String nameProject = tokenizer.nextToken().trim();
@@ -376,7 +377,7 @@ public class Server extends RemoteServer implements ServerInt {
                                 key.attach(response);
                                 break;
                             }
-                            case "addMember": {
+                            case "add_member": {
                                 String clientAddress = client.getRemoteAddress().toString();
                                 String username = server.userOnline.get(clientAddress);
                                 String projectName = tokenizer.nextToken();
@@ -413,7 +414,7 @@ public class Server extends RemoteServer implements ServerInt {
                                 key.attach(response);
                                 break;
                             }
-                            case "showMembers": {
+                            case "show_members": {
                                 String projectName = tokenizer.nextToken().trim();
                                 String clientAddress = client.getRemoteAddress().toString();
                                 String username = server.userOnline.get(clientAddress);
@@ -436,7 +437,7 @@ public class Server extends RemoteServer implements ServerInt {
                                 key.attach(response);
                                 break;
                             }
-                            case "showCards": {
+                            case "show_cards": {
                                 String projectName = tokenizer.nextToken().trim();
                                 String clientAddress = client.getRemoteAddress().toString();
                                 String username = server.userOnline.get(clientAddress);
@@ -459,7 +460,7 @@ public class Server extends RemoteServer implements ServerInt {
                                 key.attach(response);
                                 break;
                             }
-                            case "showCard": {
+                            case "show_card": {
                                 String projectName = tokenizer.nextToken();
                                 String cardName = tokenizer.nextToken().trim();
                                 String clientAddress = client.getRemoteAddress().toString();
@@ -482,7 +483,7 @@ public class Server extends RemoteServer implements ServerInt {
                                 key.attach(response);
                                 break;
                             }
-                            case "addCard": {
+                            case "add_card": {
                                 String projectName = tokenizer.nextToken();
                                 String cardName = tokenizer.nextToken();
                                 StringBuilder descrizione = new StringBuilder();
@@ -519,7 +520,7 @@ public class Server extends RemoteServer implements ServerInt {
                                 key.attach(response);
                                 break;
                             }
-                            case "moveCard": {
+                            case "move_card": {
                                 String projectName = tokenizer.nextToken();
                                 String cardName = tokenizer.nextToken();
                                 String listStart = tokenizer.nextToken();
@@ -558,7 +559,7 @@ public class Server extends RemoteServer implements ServerInt {
                                 key.attach(response);
                                 break;
                             }
-                            case "getCardHistory": {
+                            case "get_card_history": {
                                 String projectName = tokenizer.nextToken();
                                 String cardName = tokenizer.nextToken().trim();
                                 String clientAddress = client.getRemoteAddress().toString();
@@ -585,7 +586,7 @@ public class Server extends RemoteServer implements ServerInt {
                                 key.attach(response);
                                 break;
                             }
-                            case "cancelProject": {
+                            case "cancel_project": {
                                 String projectName = tokenizer.nextToken().trim();
                                 String clientAddress = client.getRemoteAddress().toString();
                                 String username = server.userOnline.get(clientAddress);

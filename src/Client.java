@@ -22,15 +22,16 @@ public class Client extends RemoteObject implements ClientInt{
     private final int DEFAULT_PORT_MULTICAST = 3000;
     private String user;
     private String stato;
-    //contiene la lista di coppie user-stato (stato = online or offline)
+
+    //LISTA DI COPPIE <USER,STATO> CON STATO=ONLINE/OFFLINE - AGGIORNATA DALLE CALLBACK DEL SERVER
     final private Map<String,String> listAllUser;
-    //contiene la lista di coppie progetto-ipMulticast x chat
+    //LISTA DI COPPIE <PROJECTNAME,IPMULTICASTCHAT> - AGGIORNATA DALLE CALLBACK DEL SERVER
     private Map<String,String> listIpMulticast;
-    //coppie progettoName - chat
+    //LISTA DI COPPIE <PROJECTNAME,CHAT> - AGGIORNATA DALLE CALLBACK DEL SERVER
     private Map<String,ArrayList<String>> listChatProgetti; //STRUTTURA CONDIVISA DA THREAD
-    //coppie projectName - multicast socket
+    //LISTA DI COPPIE <PROJECTNAME,SOCKET> - AGGIORNATA DAL CLIENT A SECONDA DELLO USER ONLINE
     private Map<String, MulticastSocket> listMulticastSocket;
-    //pool di thread attivi
+    //LISTA DI THREADLETTORI ATTIVI - AGGIORNATA DAL CLIENT A SECONDA DELLO USER ONLINE
     private ArrayList<Thread> threads;
 
     public Client() throws RemoteException {
@@ -43,7 +44,7 @@ public class Client extends RemoteObject implements ClientInt{
         threads = new ArrayList<>();
     }
 
-    //metodo rmi usato dal server per aggiornare la lista utenti
+    //METODO RMI CHIAMATO DAL SERVER PER AGGIORNARE LA LISTA DEGLI USER E IL LORO STATO
     public void updateUserListInterface(HashMap<String, String> userOnline, ArrayList<String> listAllUser) throws RemoteException {
         for (String s : listAllUser) {
             if (userOnline.containsValue(s)) this.listAllUser.put(s, "online");
@@ -53,6 +54,7 @@ public class Client extends RemoteObject implements ClientInt{
         //client.print("Lista Utenti aggiornata");
     }
 
+    //METODO RMI CHIAMATO DAL SERVER PER SETTARE LE CHAT DEI PROGETTI DI CUI LO USER ONLINE SUL CLIENT E' MEMBRO
     public void setIpMulticast(HashMap<String, String> listIpMulticast) throws RemoteException {
         this.listIpMulticast = listIpMulticast;
         try {
@@ -86,7 +88,6 @@ public class Client extends RemoteObject implements ClientInt{
             client.print(new String(inputWelcome.array(), StandardCharsets.UTF_8));
             ByteBuffer output = ByteBuffer.allocate(MAX_SEG_SIZE);
             while (true) {
-                //finche' non inserisco quit leggi comandi
                 ByteBuffer inputResponse = ByteBuffer.allocate(MAX_SEG_SIZE);
                 output.clear();
                 System.out.print("> ");
@@ -99,9 +100,36 @@ public class Client extends RemoteObject implements ClientInt{
                 StringTokenizer tokenizer = new StringTokenizer(si);
                 try {
                     String cmd = tokenizer.nextToken();
-                    //CONTROLLO SINTASSI COMANDI
+                    //CONTROLLO SINTASSI COMANDI - LATO CLIENT COSI' EVITO SOVRACCARICO SERVER PER RICHIESTE RISOLVIBILI FACILMENTE DAL CLIENT
+
+                    //ALLA CHIAMATA DI METODI CHE RICHIEDONO IL LOGIN (TUTTI TRANNE QUIT,REGISTER E HELP) E' IL SERVER A CONTROLLARE CHE SIA STATO EFFETTUATO,
+                    //MODIFICHE AL CODICE DEL CLIENT NON PERMETTONO IL LOGIN SENZA PASSWORD!!!
                     switch (cmd) {
-                        case "quit": { //COMANDO LATO CLIENT
+                        case "help": {
+                            System.out.println("Worth : strumento per la gestione di progetti collaborativi\n" +
+                                    "Comandi :\n" +
+                                    "(-) quit - Chiudi lo strumento\n" +
+                                    "(-) register username password - Registra un nuovo utente\n" +
+                                    "(-) login username password - Accedi con un utente\n" +
+                                    "(-) logout - Esci dal tuo account\n" +
+                                    "(-) list_users - Visualizza gli utenti registrati al servizio e il loro stato online/offline\n" +
+                                    "(-) list_onlineusers -Visualizza gli utenti regitsrati al servizio e online in questo momento\n" +
+                                    "(-) list_projects - Visualizza la lista dei progetti di cui l'utente e' membro\n" +
+                                    "(-) create_project projectname - Crea un nuovo progetto\n" +
+                                    "(-) add_member projectname username - Aggiunge l'utente username al progetto projectname\n" +
+                                    "(-) show_members projectname - Visualizza la lista dei membri del progetto\n" +
+                                    "(-) show_cards projectname - Visualizza la lista di card associate ad un progetto projectname\n" +
+                                    "(-) show_card projectname cardname - Visualizza le informazioni della card cardname associata al progetto projectname\n" +
+                                    "(-) add_card projectname cardname descrizione - Aggiunge la card cardname con la sua descrizione al progetto projectname\n" +
+                                    "(-) move_card projectname cardname listaPartenza listaDestinazione - Sposta la card cardname del progetto projectname dalla lista listaPartenza alla lista listaDestinazione\n" +
+                                    "(-) get_card_history projectname cardname - Visualizza lo storico degli spostamenti della card cardname del progetto projectname\n" +
+                                    "(-) read_chat projectname - Visualizza i nuovi messaggi della chat del progetto projectname\n" +
+                                    "(-) send_msg projectname messaggio - Invia un messaggio sulla chat del progetto projectname\n" +
+                                    "(-) cancel_project projectname - Cancella un progetto completato (tutte le card nella lista done)\n");
+                            break;
+                        }
+                        //COMANDO LATO CLIENT
+                        case "quit": {
                             socketClient.close();
                             scanner.close();
                             client.print("Closing connection to Server...");
@@ -110,7 +138,8 @@ public class Client extends RemoteObject implements ClientInt{
                             server.unregisterForCallback(client.user);
                             System.exit(0); //se ho inserito comando quit non mando niente al server e termino il client
                         }
-                        case "register": { //register username passw - COMANDO LATO CLIENT
+                        //register username passw - COMANDO LATO CLIENT
+                        case "register": {
                             String username;
                             String passw;
                             try {
@@ -150,6 +179,7 @@ public class Client extends RemoteObject implements ClientInt{
                                     inputResponse.flip();
                                     String response = new String(inputResponse.array(), StandardCharsets.UTF_8);
                                     client.print(response);
+                                    //SE LOGIN CON SUCCESSO SETTO LE VARIABILI LOCALI E MI REGISTRO ALLE CALLBACK
                                     if (response.contains("logged in")) {
                                         client.user = username;
                                         client.stato = "online";
@@ -159,16 +189,6 @@ public class Client extends RemoteObject implements ClientInt{
                                         //client.print("Mi sto registrando per la callback...");
                                         server.registerForCallback(client.user, stub);
                                         //client.print("Registrazione effettuata");
-                                    /*
-                                    for (Map.Entry<String, String> entry : client.listIpMulticast.entrySet()) {
-                                        MulticastSocket ms = new MulticastSocket(client.DEFAULT_PORT_MULTICAST);
-                                        ms.joinGroup(InetAddress.getByName(entry.getValue()));
-                                        client.listMulticastSocket.put(client.user, ms);
-                                        Thread thread = new Thread(new LettoreChat(client.listChatProgetti.get(entry.getKey()), ms, InetAddress.getByName(entry.getValue())));
-                                        thread.start();
-                                        client.threads.add(thread);
-                                    }
-                                    */
                                     }
                                 }
                             }
@@ -192,6 +212,7 @@ public class Client extends RemoteObject implements ClientInt{
                                 inputResponse.flip();
                                 String response = new String(inputResponse.array(), StandardCharsets.UTF_8);
                                 client.print(response);
+                                //SE LOGOUT CON SUCCESSO SETTO VARIABILI LOCALI, ELIMINO LA REGISTRAZIONE ALLE CALLBACK E TERMINO I THREAD LETTORI
                                 if (response.contains("scollegato")) {
                                     client.stato = "offline";
                                     Registry registry = LocateRegistry.getRegistry(DEFAULT_PORT_RMI);
@@ -209,7 +230,7 @@ public class Client extends RemoteObject implements ClientInt{
                             break;
                         }
                         //listUsers - COMANDO LATO CLIENT - USA STRUTTURA DATI LOCALE
-                        case "listUsers": {
+                        case "list_users": {
                             if (tokenizer.countTokens() != 0) {
                                 client.print("Errore : parametri non corretti");
                                 client.print("Formato comando : listUsers");
@@ -223,7 +244,7 @@ public class Client extends RemoteObject implements ClientInt{
                             break;
                         }
                         //listOnlineusers - COMANDO LATO CLIENT - USA STRUTTURA DATI LOCALE
-                        case "listOnlineusers": {
+                        case "list_onlineusers": {
                             if (tokenizer.countTokens() != 0) {
                                 client.print("Errore : parametri non corretti");
                                 client.print("Formato comando : listOnlineusers");
@@ -242,7 +263,7 @@ public class Client extends RemoteObject implements ClientInt{
                             break;
                         }
                         //listProjects
-                        case "listProjects": {
+                        case "list_projects": {
                             if (tokenizer.countTokens() != 0) {
                                 client.print("Errore : parametri non corretti");
                                 client.print("Formato comando : listProjects");
@@ -262,7 +283,7 @@ public class Client extends RemoteObject implements ClientInt{
                             break;
                         }
                         //createProject projectName
-                        case "createProject": {
+                        case "create_project": {
                             if (tokenizer.countTokens() != 1) {
                                 client.print("Errore : parametri non corretti");
                                 client.print("Formato comando : createProject");
@@ -282,7 +303,7 @@ public class Client extends RemoteObject implements ClientInt{
                             break;
                         }
                         //addMember projectName username
-                        case "addMember": {
+                        case "add_member": {
                             if (tokenizer.countTokens() != 2) {
                                 client.print("Errore : parametri non corretti");
                                 client.print("Formato comando : addMember projectName username");
@@ -302,7 +323,7 @@ public class Client extends RemoteObject implements ClientInt{
                             break;
                         }
                         //showMembers projectName
-                        case "showMembers": {
+                        case "show_members": {
                             if (tokenizer.countTokens() != 1) {
                                 client.print("Errore : parametri non corretti");
                                 client.print("Formato comando : showMembers projectName");
@@ -322,7 +343,7 @@ public class Client extends RemoteObject implements ClientInt{
                             break;
                         }
                         //showCards projectName
-                        case "showCards": {
+                        case "show_cards": {
                             if (tokenizer.countTokens() != 1) {
                                 client.print("Errore : parametri non corretti");
                                 client.print("Formato comando : showCards projectName");
@@ -342,7 +363,7 @@ public class Client extends RemoteObject implements ClientInt{
                             break;
                         }
                         //showCard projectName cardName
-                        case "showCard": {
+                        case "show_card": {
                             if (tokenizer.countTokens() != 2) {
                                 client.print("Errore : parametri non corretti");
                                 client.print("Formato comando : showCard projectName cardName");
@@ -362,7 +383,7 @@ public class Client extends RemoteObject implements ClientInt{
                             break;
                         }
                         //addCard projectName cardName descrizione
-                        case "addCard": {
+                        case "add_card": {
                             if (tokenizer.countTokens() < 3) {
                                 client.print("Errore : parametri non corretti");
                                 client.print("Formato comando : addCard projectName cardName descrizione");
@@ -382,7 +403,7 @@ public class Client extends RemoteObject implements ClientInt{
                             break;
                         }
                         //moveCard projectName cardName listaPartenza listaDestinazione
-                        case "moveCard": {
+                        case "move_card": {
                             if (tokenizer.countTokens() != 4) {
                                 client.print("Errore : parametri non corretti");
                                 client.print("Formato comando : moveCard projectName cardName listaPartenza listaDestinazione");
@@ -402,7 +423,7 @@ public class Client extends RemoteObject implements ClientInt{
                             break;
                         }
                         //getCardHistory projectName cardName
-                        case "getCardHistory": {
+                        case "get_card_history": {
                             if (tokenizer.countTokens() != 2) {
                                 client.print("Errore : parametri non corretti");
                                 client.print("Formato comando : getCardHistory projectName cardName");
@@ -422,7 +443,7 @@ public class Client extends RemoteObject implements ClientInt{
                             break;
                         }
                         //readChat projectName
-                        case "readChat": {
+                        case "read_chat": {
                             try {
                                 String projectName = tokenizer.nextToken().trim();
                                 if (client.stato.equals("online")) {
@@ -443,7 +464,7 @@ public class Client extends RemoteObject implements ClientInt{
                             break;
                         }
                         //sendChatMsg projectName messaggio
-                        case "sendChatMsg": {
+                        case "send_msg": {
                             try {
                                 String projectName = tokenizer.nextToken();
                                 StringBuilder messaggio = new StringBuilder();
@@ -470,7 +491,7 @@ public class Client extends RemoteObject implements ClientInt{
                             break;
                         }
                         //cancelProject projectName
-                        case "cancelProject": {
+                        case "cancel_project": {
                             if (tokenizer.countTokens() != 1) {
                                 client.print("Errore : parametri non corretti");
                                 client.print("Formato comando : cancelProject projectName");
