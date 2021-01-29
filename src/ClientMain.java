@@ -16,10 +16,10 @@ import java.util.*;
 public class ClientMain extends RemoteObject implements ClientInt{
 
     private static final int DEFAULT_PORT_SERVER = 2000;
-    private final static int DEFAULT_PORT_RMI = 1950;
+    private static final int DEFAULT_PORT_RMI = 1950;
     private static final String DEFAULT_IP = "127.0.0.1";
     private static final int MAX_SEG_SIZE = 512;
-    private final int DEFAULT_PORT_MULTICAST = 3000;
+    private static final int DEFAULT_PORT_MULTICAST = 3000;
     private String user;
     private String stato;
 
@@ -29,7 +29,7 @@ public class ClientMain extends RemoteObject implements ClientInt{
     private Map<String,String> listIpMulticast;
     //LISTA DI COPPIE <PROJECTNAME,CHAT> - AGGIORNATA DALLE CALLBACK DEL SERVER
     private Map<String,ArrayList<String>> listChatProgetti; //STRUTTURA CONDIVISA DA THREAD
-    //LISTA DI COPPIE <PROJECTNAME,SOCKET> - AGGIORNATA DAL CLIENT A SECONDA DELLO USER ONLINE
+    //LISTA DI COPPIE <PROJECTNAME,SOCKETCHAT> - AGGIORNATA DAL CLIENT A SECONDA DELLO USER ONLINE
     private Map<String, MulticastSocket> listMulticastSocket;
     //LISTA DI THREADLETTORI ATTIVI - AGGIORNATA DAL CLIENT A SECONDA DELLO USER ONLINE
     private ArrayList<Thread> threads;
@@ -45,12 +45,13 @@ public class ClientMain extends RemoteObject implements ClientInt{
     }
 
     //METODO RMI CHIAMATO DAL SERVER PER AGGIORNARE LA LISTA DEGLI USER E IL LORO STATO
-    public void updateUserListInterface(HashMap<String, String> userOnline, ArrayList<String> listAllUser) throws RemoteException {
-        for (String s : listAllUser) {
-            if (userOnline.containsValue(s)) this.listAllUser.put(s, "online");
-            else this.listAllUser.put(s,"offline");
+    public void updateUserList(HashMap<String, String> userOnline, ArrayList<String> listAllUser) throws RemoteException {
+        synchronized (this.listAllUser) {
+            for (String s : listAllUser) {
+                if (userOnline.containsValue(s)) this.listAllUser.put(s, "online");
+                else this.listAllUser.put(s, "offline");
+            }
         }
-
         //client.print("Lista Utenti aggiornata");
     }
 
@@ -102,7 +103,7 @@ public class ClientMain extends RemoteObject implements ClientInt{
                     String cmd = tokenizer.nextToken();
                     //CONTROLLO SINTASSI COMANDI - LATO CLIENT COSI' EVITO SOVRACCARICO SERVER PER RICHIESTE RISOLVIBILI FACILMENTE DAL CLIENT
 
-                    //ALLA CHIAMATA DI METODI CHE RICHIEDONO IL LOGIN (TUTTI TRANNE QUIT,REGISTER E HELP) E' IL SERVER A CONTROLLARE CHE SIA STATO EFFETTUATO,
+                    //ALLA CHIAMATA DI METODI CHE RICHIEDONO IL LOGIN (TUTTI TRANNE QUIT, REGISTER, HELP E LIST_USER) E' IL SERVER A CONTROLLARE CHE SIA STATO EFFETTUATO,
                     //MODIFICHE AL CODICE DEL CLIENT NON PERMETTONO IL LOGIN SENZA PASSWORD!!!
                     switch (cmd) {
                         case "help": {
@@ -130,13 +131,19 @@ public class ClientMain extends RemoteObject implements ClientInt{
                         }
                         //COMANDO LATO CLIENT
                         case "quit": {
-                            socketClient.close();
-                            scanner.close();
-                            client.print("Closing connection to Server...");
-                            Registry registry = LocateRegistry.getRegistry(DEFAULT_PORT_RMI);
-                            ServerInt server = (ServerInt) registry.lookup("WORTH-SERVER");
-                            server.unregisterForCallback(client.user);
-                            System.exit(0); //se ho inserito comando quit non mando niente al server e termino il client
+                            if (tokenizer.hasMoreTokens()) {
+                                client.print("Errore : parametri non corretti");
+                                client.print("Formato comando : quit");
+                            } else {
+                                socketClient.close();
+                                scanner.close();
+                                client.print("Abbandono il servizio ...");
+                                Registry registry = LocateRegistry.getRegistry(DEFAULT_PORT_RMI);
+                                ServerInt server = (ServerInt) registry.lookup("WORTH-SERVER");
+                                server.unregisterForCallback(client.user);
+                                System.exit(0); //se ho inserito comando quit non mando niente al server e termino il client
+                            }
+                            break;
                         }
                         //register username passw - COMANDO LATO CLIENT
                         case "register": {
@@ -180,7 +187,7 @@ public class ClientMain extends RemoteObject implements ClientInt{
                                     String response = new String(inputResponse.array(), StandardCharsets.UTF_8);
                                     client.print(response);
                                     //SE LOGIN CON SUCCESSO SETTO LE VARIABILI LOCALI E MI REGISTRO ALLE CALLBACK
-                                    if (response.contains("logged in")) {
+                                    if (response.contains("online")) {
                                         client.user = username;
                                         client.stato = "online";
                                         Registry registry = LocateRegistry.getRegistry(DEFAULT_PORT_RMI);
@@ -236,9 +243,15 @@ public class ClientMain extends RemoteObject implements ClientInt{
                                 client.print("Formato comando : listUsers");
                             } else {
                                 if (client.stato.equals("online")) {
-                                    if (client.listAllUser.isEmpty()) {
-                                        client.print("Nessun utente registrato al servizio");
-                                    } else client.print(client.listAllUser.toString());
+                                    synchronized (client.listAllUser) {
+                                        if (client.listAllUser.isEmpty()) {
+                                            client.print("Nessun utente registrato al servizio");
+                                        } else {
+                                            for (Map.Entry<String,String> entry : client.listAllUser.entrySet()) {
+                                                client.print(entry.getKey()+" : "+entry.getValue());
+                                            }
+                                        }
+                                    }
                                 } else client.print("Errore : utente non loggato");
                             }
                             break;
@@ -251,10 +264,12 @@ public class ClientMain extends RemoteObject implements ClientInt{
                             } else {
                                 if (client.stato.equals("online")) {
                                     boolean zeroUserOnline = true;
-                                    for (Map.Entry<String, String> entry : client.listAllUser.entrySet()) {
-                                        if (entry.getValue().equals("online")) {
-                                            client.print(entry.getKey());
-                                            zeroUserOnline = false;
+                                    synchronized (client.listAllUser) {
+                                        for (Map.Entry<String, String> entry : client.listAllUser.entrySet()) {
+                                            if (entry.getValue().equals("online")) {
+                                                client.print(entry.getKey());
+                                                zeroUserOnline = false;
+                                            }
                                         }
                                     }
                                     if (zeroUserOnline) client.print("Nessun utente online");
@@ -408,6 +423,10 @@ public class ClientMain extends RemoteObject implements ClientInt{
                                 client.print("Errore : parametri non corretti");
                                 client.print("Formato comando : moveCard projectName cardName listaPartenza listaDestinazione");
                             } else {
+                                String projectName = tokenizer.nextToken();
+                                String cardName = tokenizer.nextToken();
+                                String listPart = tokenizer.nextToken();
+                                String listDest = tokenizer.nextToken().trim();
                                 //INVIO COMANDO AL SERVER
                                 output.put(si.getBytes());
                                 output.flip();
@@ -418,7 +437,17 @@ public class ClientMain extends RemoteObject implements ClientInt{
                                     System.exit(-1);
                                 }
                                 inputResponse.flip();
-                                client.print(new String(inputResponse.array(), StandardCharsets.UTF_8));
+                                String s = new String(inputResponse.array(), StandardCharsets.UTF_8);
+                                client.print(s);
+                                if (s.contains("successo")) {
+                                    MulticastSocket ms = client.listMulticastSocket.get(projectName);
+                                    if (ms != null) {
+                                        byte[] data;
+                                        data = ("Card "+cardName+" del progetto "+projectName+" spostata dalla lista "+listPart+" alla lista "+listDest).getBytes();
+                                        InetAddress ia = InetAddress.getByName(client.listIpMulticast.get(projectName));
+                                        DatagramPacket dp = new DatagramPacket(data, data.length, ia, client.DEFAULT_PORT_MULTICAST);
+                                        ms.send(dp); }
+                                }
                             }
                             break;
                         }
@@ -478,7 +507,7 @@ public class ClientMain extends RemoteObject implements ClientInt{
                                         byte[] data;
                                         data = messsCompatto.getBytes();
                                         InetAddress ia = InetAddress.getByName(client.listIpMulticast.get(projectName));
-                                        DatagramPacket dp = new DatagramPacket(data, data.length, ia, client.DEFAULT_PORT_MULTICAST);
+                                        DatagramPacket dp = new DatagramPacket(data, data.length, ia, DEFAULT_PORT_MULTICAST);
                                         ms.send(dp);
                                         client.print("Messaggio inviato");
                                     } else

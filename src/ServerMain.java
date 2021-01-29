@@ -167,7 +167,7 @@ public class ServerMain extends RemoteServer implements ServerInt {
         for (Map.Entry<String,ClientInt> entry : clients.entrySet()) {
             //System.out.println("AGGIORNO CLIENT");
             try {
-                entry.getValue().updateUserListInterface(userOnline, arraylist);
+                entry.getValue().updateUserList(userOnline, arraylist);
             } catch (RemoteException e) {
                 System.out.println("Client interrotto");
                 userToRemove.add(entry.getKey());
@@ -284,7 +284,8 @@ public class ServerMain extends RemoteServer implements ServerInt {
                                     if (BCrypt.checkpw(passw, hash)) {
                                         if (!serverMain.userOnline.containsValue(username)) { //utente puo' loggarsi su un solo client
                                             serverMain.userOnline.put(clientAddress,username);
-                                            response.put((username + " logged in").getBytes());
+                                            response.put((username + " online").getBytes());
+                                            //NON POSSO METTERE QUI UPDATECLIENT E SENDIPMULTICAST ALTRIMENTI NON AGGIORNANO IL CLIENT CHE FA IL LOGIN PERCHE' NON SI E' ANCORA REGISTRATO
                                             //System.out.println("PASSW OK");
                                         } else {
                                             response.put("Errore : utente online su un altro client, deve essere prima scollegato".getBytes());
@@ -536,7 +537,7 @@ public class ServerMain extends RemoteServer implements ServerInt {
                                     else {
                                         try {
                                             p.moveCard(cardName, listStart, listDest);
-                                            response.put("ok".getBytes());
+                                            response.put(("Card "+cardName+" spostata con successo").getBytes());
                                             //----------SALVO MODIFICA SU FILE SYSTEM------------------//
                                             Path source = Path.of("progetti/"+projectName+"/"+listStart+"/"+cardName+".json");
                                             Path dest = Path.of("progetti/"+projectName+"/"+listDest+"/"+cardName+".json");
