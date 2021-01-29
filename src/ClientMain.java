@@ -114,7 +114,7 @@ public class ClientMain extends RemoteObject implements ClientInt{
                                     "(-) login username password - Accedi con un utente\n" +
                                     "(-) logout - Esci dal tuo account\n" +
                                     "(-) list_users - Visualizza gli utenti registrati al servizio e il loro stato online/offline\n" +
-                                    "(-) list_onlineusers -Visualizza gli utenti regitsrati al servizio e online in questo momento\n" +
+                                    "(-) list_onlineusers -Visualizza gli utenti registrati al servizio e online in questo momento\n" +
                                     "(-) list_projects - Visualizza la lista dei progetti di cui l'utente e' membro\n" +
                                     "(-) create_project projectname - Crea un nuovo progetto\n" +
                                     "(-) add_member projectname username - Aggiunge l'utente username al progetto projectname\n" +

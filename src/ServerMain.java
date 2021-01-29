@@ -38,7 +38,7 @@ public class ServerMain extends RemoteServer implements ServerInt {
     //LISTA COPPIE <USERNAME,HASH> ACCESSO CONCORRENTE MULTITHREAD - AGGIORNATA DA METODO REGISTER RMI
     private ConcurrentHashMap<String,String> listUser;
     //LISTA PROGETTI - ACCESSO SEQUENZIALE
-    private ArrayList<Progetto> listProgetti;
+    private final ArrayList<Progetto> listProgetti;
     //coppie socket add client - username --> con quale username il client si e' loggato
     //LISTA COPPIE <SOCKETADDCLIENT,USERNAME> --> CON QUALE USERNAME SI E' LOGGATO IL CLIENT - AMMESSO LOGIN STESSO USER SU UN SOLO CLIENT - ACCESSO SEQUENZIALE
     final private HashMap<String,String> userOnline;
@@ -262,8 +262,6 @@ public class ServerMain extends RemoteServer implements ServerInt {
                         }
                         input.flip();//preparo buffer alla lettura
                         String si = new String(input.array(), StandardCharsets.UTF_8);
-                        //System.out.println("FROM CLIENT : " + si);
-                        //System.out.println(si.length());
                         StringTokenizer tokenizer = new StringTokenizer(si);
                         String cmd = tokenizer.nextToken().trim();
                         //System.out.println("CMD : " + cmd);
@@ -665,6 +663,7 @@ public class ServerMain extends RemoteServer implements ServerInt {
         return null;
     }
 
+    //METODO DI SUPPORTO PER IL RIUSO DEGLI INDIRIZZI DI MULTICAST
     private String getIpMulticast () {
         while (!availableIp(ipMulticast)) {
             //incrementa di uno l'indirizzo
