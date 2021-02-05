@@ -138,7 +138,7 @@ public class ServerMain extends RemoteServer implements ServerInt {
             e.printStackTrace();
         }
         updateClient();
-        return "ok";
+        return "Utente registrato al servizio";
     }
 
     //METODO RMI CHIAMATO DAL CLIENT PER REGISTRARSI ALLE CALLBACK - QUANDO SI REGISTRA (PASSA ONLINE) AGGIORNO LA LISTA UTENTI E SETTO LE CHAT DEL CLIENT
@@ -286,7 +286,7 @@ public class ServerMain extends RemoteServer implements ServerInt {
                                             //NON POSSO METTERE QUI UPDATECLIENT E SENDIPMULTICAST ALTRIMENTI NON AGGIORNANO IL CLIENT CHE FA IL LOGIN PERCHE' NON SI E' ANCORA REGISTRATO
                                             //System.out.println("PASSW OK");
                                         } else {
-                                            response.put("Errore : utente online su un altro client, deve essere prima scollegato".getBytes());
+                                            response.put("Errore : utente loggato su un altro client, deve essere prima scollegato".getBytes());
                                             //System.out.println("ALTRO UTENTE GIA' LOGGATO");
                                         }
                                     } else {

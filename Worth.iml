@@ -9,5 +9,6 @@
     <orderEntry type="sourceFolder" forTests="false" />
     <orderEntry type="library" name="gson-2.8.6" level="application" />
     <orderEntry type="library" name="spring-security-crypto-5.2.2.RELEASE" level="application" />
+    <orderEntry type="library" name="lib" level="application" />
   </component>
 </module>
